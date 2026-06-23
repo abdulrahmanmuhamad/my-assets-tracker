@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, EyeOff, MonitorCog, RefreshCcw, Save, ShieldCheck, Trash2, Upload, WalletCards } from "lucide-react";
+import { Download, EyeOff, MonitorCog, Phone, RefreshCcw, Save, ShieldCheck, Trash2, Upload, WalletCards } from "lucide-react";
 import { UserProfile } from "@clerk/nextjs";
 import { ClerkSecurityActions } from "@/components/settings/clerk-security-actions";
 import type { NotificationPreferencesRecord } from "@/lib/alerts/client-types";
@@ -60,6 +60,9 @@ export function SettingsPanel({
   const [settings, setSettings] = useState(initialSettings);
   const [brokerageConnections, setBrokerageConnections] = useState(initialBrokerageConnections);
   const [notificationPreferences, setNotificationPreferences] = useState(initialNotificationPreferences);
+  const [phone, setPhone] = useState(securityUser.phone || "");
+  const [phonePending, setPhonePending] = useState(false);
+  const [phoneMessage, setPhoneMessage] = useState("");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("profile");
@@ -140,6 +143,28 @@ export function SettingsPanel({
       setMessage(error instanceof Error ? error.message : "Refresh failed");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function savePhone() {
+    setPhonePending(true);
+    setPhoneMessage("");
+    try {
+      const response = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Phone update failed");
+      setPhone(data.phone || "");
+      window.dispatchEvent(new CustomEvent("portfolio:profile-updated", { detail: data }));
+      setNotificationPreferences((current) => current.phoneNumber ? current : { ...current, phoneNumber: data.phone || "" });
+      setPhoneMessage("Phone number saved.");
+    } catch (error) {
+      setPhoneMessage(error instanceof Error ? error.message : "Phone update failed");
+    } finally {
+      setPhonePending(false);
     }
   }
 
@@ -224,8 +249,30 @@ export function SettingsPanel({
                 <div className="mt-1 text-sm font-semibold text-slate-950">{securityUser.email || "Not set"}</div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Phone</div>
-                <div className="mt-1 text-sm font-semibold text-slate-950">{securityUser.phone || "Not set"}</div>
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <Phone className="h-3.5 w-3.5 text-sky-600" />
+                  Phone
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <label className="min-w-0">
+                    <span className="sr-only">Phone number</span>
+                    <input
+                      className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={(event) => setPhone(event.target.value)}
+                      placeholder="+1 555 123 4567"
+                      maxLength={30}
+                    />
+                  </label>
+                  <Button className="w-full sm:w-auto" size="sm" variant="secondary" onClick={savePhone} disabled={phonePending} icon={<Save className="h-4 w-4" />}>
+                    {phonePending ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">Used for your profile and future notification preferences. Email remains managed by Clerk.</p>
+                {phoneMessage ? <div className="mt-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">{phoneMessage}</div> : null}
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">MFA</div>

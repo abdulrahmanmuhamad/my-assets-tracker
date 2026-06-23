@@ -29,9 +29,14 @@ export async function PUT(request: Request) {
   try {
     const user = await requireAuthenticatedUser();
     const input = profileUpdateSchema.parse(await request.json());
+    const data: { username?: string; displayName?: string | null; phone?: string | null } = {};
+    if (input.username !== undefined) data.username = input.username;
+    if (input.displayName !== undefined) data.displayName = input.displayName || null;
+    if (input.phone !== undefined) data.phone = input.phone || null;
+
     return jsonOk(await prisma.user.update({
       where: { id: user.id },
-      data: { username: input.username, displayName: input.displayName || null },
+      data,
       select: profileSelect,
     }));
   } catch (error) {

@@ -14,9 +14,14 @@ describe("username validation", () => {
     }
   });
 
-  it("limits profile updates to username and display name", () => {
+  it("limits profile updates to editable profile fields", () => {
     const result = profileUpdateSchema.parse({ username: "Valid_User", displayName: "Valid User", email: "changed@example.com" });
     expect(result).toEqual({ username: "valid_user", displayName: "Valid User" });
+  });
+
+  it("allows phone-only profile updates", () => {
+    expect(profileUpdateSchema.parse({ phone: " +1 (555) 123-4567 " })).toEqual({ phone: "+1 (555) 123-4567" });
+    expect(profileUpdateSchema.safeParse({ phone: "call me" }).success).toBe(false);
   });
 
   it("backs normalized usernames with a database unique constraint", () => {
