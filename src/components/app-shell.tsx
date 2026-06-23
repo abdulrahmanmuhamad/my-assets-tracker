@@ -128,11 +128,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       <div className="lg:pl-72">
         <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-slate-200/70 bg-white/75 px-4 backdrop-blur-xl lg:px-8">
-          <Link href="/" className="flex items-center gap-3 lg:hidden">
+          <Link href="/dashboard" className="flex min-w-0 items-center gap-3 lg:hidden">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-white">
               <Shield className="h-5 w-5" />
             </div>
-            <span className="text-sm font-semibold">Asset Portfolio</span>
+            <span className="truncate text-sm font-semibold">Asset Portfolio</span>
           </Link>
           <div className="hidden items-center gap-4 lg:flex">
             <div>
@@ -201,27 +201,91 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {mobileOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button className="absolute inset-0 bg-slate-950/45" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 right-0 w-[min(88vw,340px)] border-l border-slate-200 bg-white p-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+          <aside className="absolute inset-y-0 right-0 flex w-[min(92vw,380px)] flex-col border-l border-slate-200 bg-white p-4 shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 pb-4">
               <div className="text-sm font-semibold text-slate-950">Navigation</div>
               <button className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100" onClick={() => setMobileOpen(false)} aria-label="Close navigation" title="Close navigation">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="mt-4 grid gap-1.5">
+            <MobileAccountPanel profile={profile} unreadCount={unreadCount} onNavigate={() => setMobileOpen(false)} />
+            <nav className="mt-4 grid flex-1 gap-1.5 overflow-y-auto pb-4 pr-1">
               {navItems.map((item) => {
                 const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                 const Icon = item.icon;
                 return (
-                  <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={cn("flex h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold", active ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100")}>
+                  <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} className={cn("flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-semibold", active ? "bg-slate-950 text-white" : "text-slate-700 hover:bg-slate-100")}>
                     <Icon className="h-4 w-4" />{item.label}{isComingSoon(item.feature) ? <span className="ml-auto text-[10px] font-bold uppercase text-amber-600">Soon</span> : null}
                   </Link>
                 );
               })}
             </nav>
+            {profile?.role === "owner" ? (
+              <div className="shrink-0 border-t border-slate-200 pt-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                    <BarChart3 className="h-4 w-4 text-sky-600" />
+                    Portfolio OS
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-slate-500">PostgreSQL, Prisma, private file routes.</div>
+                </div>
+              </div>
+            ) : null}
           </aside>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function MobileAccountPanel({
+  profile,
+  unreadCount,
+  onNavigate,
+}: {
+  profile: { username?: string | null; displayName?: string | null; email?: string | null } | null;
+  unreadCount: number;
+  onNavigate: () => void;
+}) {
+  const { user } = useUser();
+  const email = profile?.email || user?.primaryEmailAddress?.emailAddress;
+  const label = profile?.displayName || profile?.username || user?.fullName || email || "Portfolio user";
+
+  return (
+    <div className="mt-4 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-center gap-3">
+        {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
+          <UserButton />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">PO</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-slate-950">{label}</div>
+          <div className="truncate text-xs text-slate-500">{email || "Private session"}</div>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Link
+          href="/notifications"
+          onClick={onNavigate}
+          className="relative flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+        >
+          <Bell className="h-4 w-4" />
+          Alerts
+          {unreadCount ? <span className="absolute right-2 top-1 h-2 w-2 rounded-full bg-rose-500" /> : null}
+        </Link>
+        {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
+          <SignOutButton>
+            <button className="flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+              Sign out
+            </button>
+          </SignOutButton>
+        ) : (
+          <Link href="/sign-in" onClick={onNavigate} className="flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+            Sign in
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
