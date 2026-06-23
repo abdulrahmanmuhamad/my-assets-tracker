@@ -27,7 +27,7 @@ import { PrivacyToggleButton } from "@/components/privacy/privacy-toggle-button"
 import { isBanksFeatureEnabled, isStocksFeatureEnabled } from "@/lib/features";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: Home },
+  { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/minerals", label: "Minerals", icon: Sparkles },
   { href: "/jewelry", label: "Jewelry", icon: Gem },
   { href: "/real-estate", label: "Real Estate", icon: Building2 },

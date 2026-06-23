@@ -48,7 +48,7 @@ export function PasswordlessSignIn() {
       if (result.error) throw result.error;
       const finalizeResult = await signIn.finalize();
       if (finalizeResult.error) throw finalizeResult.error;
-      router.push("/");
+      router.push("/dashboard");
       router.refresh();
     } catch (verifyError) {
       setError(clerkErrorMessage(verifyError));
