@@ -1,8 +1,13 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f3f6fb;
+  --foreground: #0f172a;
+  --chart-grid: #e2e8f0;
+  --chart-muted: #64748b;
+  --chart-tooltip: #ffffff;
+  --chart-tooltip-border: #cbd5e1;
 }
 
 @theme inline {
@@ -12,15 +17,128 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html.dark {
+  --background: #080d16;
+  --foreground: #e5e7eb;
+  --chart-grid: #334155;
+  --chart-muted: #94a3b8;
+  --chart-tooltip: #111827;
+  --chart-tooltip-border: #475569;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  min-width: 320px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: #bae6fd;
+  color: #0f172a;
+}
+
+.financial-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.financial-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+html.dark .bg-white,
+html.dark .bg-white\/90,
+html.dark .bg-white\/80,
+html.dark .bg-white\/75,
+html.dark .bg-white\/70 {
+  background-color: #111827 !important;
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/95,
+html.dark .bg-slate-50\/80,
+html.dark .bg-slate-50\/70,
+html.dark .bg-slate-100 {
+  background-color: #172033 !important;
+}
+
+html.dark .text-slate-950,
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-200\/80,
+html.dark .border-slate-200\/70,
+html.dark .border-slate-300 {
+  border-color: #334155 !important;
+}
+
+html.dark .to-white {
+  --tw-gradient-to: #111827 var(--tw-gradient-to-position) !important;
+}
+
+html.dark .bg-emerald-50 { background-color: #052e2b !important; }
+html.dark .bg-amber-50 { background-color: #332508 !important; }
+html.dark .bg-sky-50 { background-color: #082f49 !important; }
+html.dark .bg-rose-50 { background-color: #3b0a1a !important; }
+html.dark .text-emerald-700,
+html.dark .text-emerald-800 { color: #6ee7b7 !important; }
+html.dark .text-amber-700,
+html.dark .text-amber-800 { color: #fcd34d !important; }
+html.dark .text-sky-700,
+html.dark .text-sky-800 { color: #7dd3fc !important; }
+html.dark .text-rose-700,
+html.dark .text-rose-800 { color: #fda4af !important; }
+
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: #0f172a;
+  border-color: #475569;
+  color: #f8fafc;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b;
+}
+
+@media (max-width: 640px) {
+  .page-header-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .page-header-actions > * {
+    min-width: 0;
+    width: 100%;
+  }
 }

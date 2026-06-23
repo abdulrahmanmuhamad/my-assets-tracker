@@ -1,0 +1,553 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String                  @id @default(cuid())
+  authProviderUserId     String?                 @unique @map("auth_provider_user_id")
+  username               String?                 @unique
+  displayName            String?                 @map("display_name")
+  name                   String?
+  email                  String?                 @unique
+  emailVerified          Boolean                 @default(false) @map("email_verified")
+  phone                  String?
+  imageUrl               String?                 @map("image_url")
+  accessStatus           String                  @default("pending_email_verification") @map("access_status")
+  role                   String                  @default("user")
+  approvedAt             DateTime?               @map("approved_at")
+  approvedByUserId       String?                 @map("approved_by_user_id")
+  rejectedAt             DateTime?               @map("rejected_at")
+  suspendedAt            DateTime?               @map("suspended_at")
+  lastLoginAt            DateTime?               @map("last_login_at")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+  assetCategories        AssetCategory[]
+  mineralTransactions    MineralTransaction[]
+  realEstateProperties   RealEstateProperty[]
+  jewelryItems           JewelryItem[]
+  assetFiles             AssetFile[]
+  settings               Settings?
+  brokerageConnections   BrokerageConnection[]
+  brokerageAccounts      BrokerageAccount[]
+  stockHoldings          StockHolding[]
+  stockTransactions      StockTransaction[]
+  brokerageSyncLogs      BrokerageSyncLog[]
+  bankConnections        BankConnection[]
+  bankAccounts           BankAccount[]
+  bankTransactions       BankTransaction[]
+  bankSyncLogs           BankSyncLog[]
+  alertRules             AlertRule[]
+  alertEvents            AlertEvent[]
+  notificationPreference NotificationPreference?
+  alertDeliveryLogs      AlertDeliveryLog[]
+
+  @@map("users")
+}
+
+model AssetCategory {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@map("asset_categories")
+}
+
+model MineralTransaction {
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  mineralType         String   @map("mineral_type")
+  purchaseDate        DateTime @map("purchase_date")
+  purchasePrice       Decimal  @map("purchase_price") @db.Decimal(18, 2)
+  purchaseCurrency    String   @default("USD") @map("purchase_currency")
+  quantity            Decimal  @db.Decimal(18, 6)
+  unit                String
+  quantityInGrams     Decimal  @map("quantity_in_grams") @db.Decimal(18, 6)
+  karat               Decimal? @db.Decimal(5, 2)
+  purityPercent       Decimal? @map("purity_percent") @db.Decimal(6, 3)
+  purchaseLocation    String?  @map("purchase_location")
+  receiptNumber       String?  @map("receipt_number")
+  currentPricePerGram Decimal  @map("current_price_per_gram") @db.Decimal(18, 6)
+  currentValue        Decimal  @map("current_value") @db.Decimal(18, 2)
+  roiPercent          Decimal  @map("roi_percent") @db.Decimal(10, 4)
+  notes               String?
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, mineralType])
+  @@index([userId, sortOrder])
+  @@map("mineral_transactions")
+}
+
+model RealEstateProperty {
+  id                    String    @id @default(cuid())
+  userId                String    @map("user_id")
+  propertyName          String    @map("property_name")
+  propertyType          String    @map("property_type")
+  purchaseDate          DateTime  @map("purchase_date")
+  purchasePrice         Decimal   @map("purchase_price") @db.Decimal(18, 2)
+  estimatedCurrentPrice Decimal   @map("estimated_current_price") @db.Decimal(18, 2)
+  address               String?
+  isPaidOff             Boolean   @default(false) @map("is_paid_off")
+  totalPaymentMonths    Int?      @map("total_payment_months")
+  monthsPaid            Int?      @map("months_paid")
+  monthsLeft            Int?      @map("months_left")
+  monthlyPayment        Decimal?  @map("monthly_payment") @db.Decimal(18, 2)
+  remainingBalance      Decimal?  @map("remaining_balance") @db.Decimal(18, 2)
+  isRented              Boolean   @default(false) @map("is_rented")
+  monthlyRent           Decimal?  @map("monthly_rent") @db.Decimal(18, 2)
+  rentStartDate         DateTime? @map("rent_start_date")
+  monthlyExpenses       Json      @default("{}") @map("monthly_expenses")
+  monthlyNetCashFlow    Decimal   @map("monthly_net_cash_flow") @db.Decimal(18, 2)
+  equity                Decimal   @db.Decimal(18, 2)
+  roiPercent            Decimal   @map("roi_percent") @db.Decimal(10, 4)
+  notes                 String?
+  sortOrder             Int       @default(0) @map("sort_order")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, propertyType])
+  @@index([userId, sortOrder])
+  @@map("real_estate_properties")
+}
+
+model JewelryItem {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  jewelryType       String   @map("jewelry_type")
+  itemName          String   @map("item_name")
+  purchaseDate      DateTime @map("purchase_date")
+  purchasePrice     Decimal  @map("purchase_price") @db.Decimal(18, 2)
+  estimatedPriceNow Decimal? @map("estimated_price_now") @db.Decimal(18, 2)
+  weight            Decimal  @db.Decimal(18, 6)
+  unit              String
+  weightInGrams     Decimal  @map("weight_in_grams") @db.Decimal(18, 6)
+  pricePerGram      Decimal? @map("price_per_gram") @db.Decimal(18, 6)
+  karat             Decimal? @db.Decimal(5, 2)
+  purityPercent     Decimal? @map("purity_percent") @db.Decimal(6, 3)
+  gemstoneType      String?  @map("gemstone_type")
+  caratWeight       Decimal? @map("carat_weight") @db.Decimal(18, 6)
+  currentValue      Decimal  @map("current_value") @db.Decimal(18, 2)
+  roiPercent        Decimal  @map("roi_percent") @db.Decimal(10, 4)
+  purchaseLocation  String?  @map("purchase_location")
+  receiptNumber     String?  @map("receipt_number")
+  notes             String?
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, jewelryType])
+  @@index([userId, sortOrder])
+  @@map("jewelry_items")
+}
+
+model AssetFile {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  assetType  String   @map("asset_type")
+  assetId    String   @map("asset_id")
+  fileType   String   @map("file_type")
+  fileUrl    String   @map("file_url")
+  fileName   String   @map("file_name")
+  mimeType   String   @map("mime_type")
+  sizeBytes  Int      @default(0) @map("size_bytes")
+  metadata   Json     @default("{}")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, assetType, assetId])
+  @@map("asset_files")
+}
+
+model PriceCache {
+  id                String   @id @default(cuid())
+  symbol            String   @unique
+  pricePerGram      Decimal  @map("price_per_gram") @db.Decimal(18, 6)
+  pricePerTroyOunce Decimal  @map("price_per_troy_ounce") @db.Decimal(18, 6)
+  currency          String   @default("USD")
+  source            String
+  fetchedAt         DateTime @map("fetched_at")
+
+  @@map("price_cache")
+}
+
+model Settings {
+  id                             String   @id @default(cuid())
+  userId                         String   @unique @map("user_id")
+  defaultCurrency                String   @default("USD") @map("default_currency")
+  preferredMineralUnit           String   @default("troy ounce") @map("preferred_mineral_unit")
+  preferredJewelryWeightUnit     String   @default("gram") @map("preferred_jewelry_weight_unit")
+  livePriceProvider              String   @default("manual") @map("live_price_provider")
+  manualPriceOverrides           Json     @default("{}") @map("manual_price_overrides")
+  dashboardVisibility            Json     @default("{}") @map("dashboard_visibility")
+  theme                          String   @default("system")
+  includeLiquidCashInPortfolio   Boolean  @default(false) @map("include_liquid_cash_in_portfolio")
+  financialValuesHiddenByDefault Boolean  @default(true) @map("financial_values_hidden_by_default")
+  createdAt                      DateTime @default(now()) @map("created_at")
+  updatedAt                      DateTime @updatedAt @map("updated_at")
+  user                           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
+
+model BankConnection {
+  id                           String            @id @default(cuid())
+  userId                       String            @map("user_id")
+  provider                     String            @default("plaid")
+  providerItemId               String?           @map("provider_item_id")
+  providerAccessTokenEncrypted String?           @map("provider_access_token_encrypted")
+  institutionId                String?           @map("institution_id")
+  institutionName              String            @default("Connected bank") @map("institution_name")
+  institutionLogoUrl           String?           @map("institution_logo_url")
+  status                       String            @default("active")
+  productsEnabled              Json              @default("[]") @map("products_enabled")
+  transactionsCursor           String?           @map("transactions_cursor")
+  syncWarning                  String?           @map("sync_warning")
+  lastSyncedAt                 DateTime?         @map("last_synced_at")
+  createdAt                    DateTime          @default(now()) @map("created_at")
+  updatedAt                    DateTime          @updatedAt @map("updated_at")
+  user                         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts                     BankAccount[]
+  transactions                 BankTransaction[]
+  syncLogs                     BankSyncLog[]
+
+  @@unique([provider, providerItemId])
+  @@index([userId, provider, status])
+  @@map("bank_connections")
+}
+
+model BankAccount {
+  id                   String            @id @default(cuid())
+  userId               String            @map("user_id")
+  bankConnectionId     String            @map("bank_connection_id")
+  providerAccountId    String            @map("provider_account_id")
+  institutionName      String            @map("institution_name")
+  accountName          String            @map("account_name")
+  officialName         String?           @map("official_name")
+  accountType          String            @map("account_type")
+  accountSubtype       String?           @map("account_subtype")
+  mask                 String?
+  currency             String            @default("USD")
+  currentBalance       Decimal?          @map("current_balance") @db.Decimal(18, 2)
+  availableBalance     Decimal?          @map("available_balance") @db.Decimal(18, 2)
+  creditLimit          Decimal?          @map("credit_limit") @db.Decimal(18, 2)
+  includeInLiquidCash  Boolean           @default(false) @map("include_in_liquid_cash")
+  isDebtAccount        Boolean           @default(false) @map("is_debt_account")
+  syncStatus           String            @default("synced") @map("sync_status")
+  lastBalanceUpdatedAt DateTime?         @map("last_balance_updated_at")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankConnection       BankConnection    @relation(fields: [bankConnectionId], references: [id], onDelete: Cascade)
+  transactions         BankTransaction[]
+
+  @@unique([bankConnectionId, providerAccountId])
+  @@index([userId, bankConnectionId])
+  @@index([userId, accountType, accountSubtype])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id                      String         @id @default(cuid())
+  userId                  String         @map("user_id")
+  bankAccountId           String         @map("bank_account_id")
+  bankConnectionId        String         @map("bank_connection_id")
+  providerTransactionId   String         @map("provider_transaction_id")
+  date                    DateTime
+  authorizedDate          DateTime?      @map("authorized_date")
+  name                    String
+  merchantName            String?        @map("merchant_name")
+  category                String?
+  personalFinanceCategory String?        @map("personal_finance_category")
+  amount                  Decimal        @db.Decimal(18, 2)
+  currency                String         @default("USD")
+  pending                 Boolean        @default(false)
+  paymentChannel          String?        @map("payment_channel")
+  transactionType         String?        @map("transaction_type")
+  notes                   String?
+  createdAt               DateTime       @default(now()) @map("created_at")
+  updatedAt               DateTime       @updatedAt @map("updated_at")
+  user                    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount             BankAccount    @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  bankConnection          BankConnection @relation(fields: [bankConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([bankConnectionId, providerTransactionId])
+  @@index([userId, bankAccountId, date])
+  @@index([userId, amount, date])
+  @@map("bank_transactions")
+}
+
+model BankSyncLog {
+  id               String          @id @default(cuid())
+  userId           String          @map("user_id")
+  bankConnectionId String?         @map("bank_connection_id")
+  provider         String
+  status           String
+  message          String?
+  startedAt        DateTime        @default(now()) @map("started_at")
+  finishedAt       DateTime?       @map("finished_at")
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankConnection   BankConnection? @relation(fields: [bankConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, bankConnectionId, startedAt])
+  @@map("bank_sync_logs")
+}
+
+model BrokerageConnection {
+  id                           String             @id @default(cuid())
+  userId                       String             @map("user_id")
+  provider                     String
+  providerItemId               String?            @map("provider_item_id")
+  providerAccessTokenEncrypted String?            @map("provider_access_token_encrypted")
+  institutionId                String?            @map("institution_id")
+  institutionName              String             @default("Connected brokerage") @map("institution_name")
+  institutionLogoUrl           String?            @map("institution_logo_url")
+  status                       String             @default("active")
+  lastSyncedAt                 DateTime?          @map("last_synced_at")
+  createdAt                    DateTime           @default(now()) @map("created_at")
+  updatedAt                    DateTime           @updatedAt @map("updated_at")
+  user                         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts                     BrokerageAccount[]
+  holdings                     StockHolding[]
+  transactions                 StockTransaction[]
+  syncLogs                     BrokerageSyncLog[]
+
+  @@unique([provider, providerItemId])
+  @@index([userId, provider, status])
+  @@map("brokerage_connections")
+}
+
+model BrokerageAccount {
+  id                    String              @id @default(cuid())
+  userId                String              @map("user_id")
+  brokerageConnectionId String              @map("brokerage_connection_id")
+  providerAccountId     String              @map("provider_account_id")
+  brokerName            String              @map("broker_name")
+  accountName           String              @map("account_name")
+  accountType           String              @default("brokerage") @map("account_type")
+  accountSubtype        String?             @map("account_subtype")
+  mask                  String?
+  currency              String              @default("USD")
+  currentBalance        Decimal?            @map("current_balance") @db.Decimal(18, 2)
+  availableBalance      Decimal?            @map("available_balance") @db.Decimal(18, 2)
+  officialName          String?             @map("official_name")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerageConnection   BrokerageConnection @relation(fields: [brokerageConnectionId], references: [id], onDelete: Cascade)
+  holdings              StockHolding[]
+  transactions          StockTransaction[]
+
+  @@unique([brokerageConnectionId, providerAccountId])
+  @@index([userId, brokerageConnectionId])
+  @@map("brokerage_accounts")
+}
+
+model StockHolding {
+  id                        String              @id @default(cuid())
+  userId                    String              @map("user_id")
+  brokerageAccountId        String              @map("brokerage_account_id")
+  brokerageConnectionId     String              @map("brokerage_connection_id")
+  providerHoldingId         String              @map("provider_holding_id")
+  symbol                    String?
+  securityName              String              @map("security_name")
+  securityType              String              @default("other") @map("security_type")
+  cusip                     String?
+  isin                      String?
+  quantity                  Decimal             @db.Decimal(24, 8)
+  costBasis                 Decimal?            @map("cost_basis") @db.Decimal(18, 2)
+  averageCost               Decimal?            @map("average_cost") @db.Decimal(18, 6)
+  currentPrice              Decimal?            @map("current_price") @db.Decimal(18, 6)
+  marketValue               Decimal             @map("market_value") @db.Decimal(18, 2)
+  unrealizedGainLoss        Decimal?            @map("unrealized_gain_loss") @db.Decimal(18, 2)
+  unrealizedGainLossPercent Decimal?            @map("unrealized_gain_loss_percent") @db.Decimal(10, 4)
+  currency                  String              @default("USD")
+  asOfDate                  DateTime            @default(now()) @map("as_of_date")
+  createdAt                 DateTime            @default(now()) @map("created_at")
+  updatedAt                 DateTime            @updatedAt @map("updated_at")
+  user                      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerageAccount          BrokerageAccount    @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
+  brokerageConnection       BrokerageConnection @relation(fields: [brokerageConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([brokerageAccountId, providerHoldingId])
+  @@index([userId, brokerageConnectionId])
+  @@index([userId, symbol])
+  @@map("stock_holdings")
+}
+
+model StockTransaction {
+  id                    String              @id @default(cuid())
+  userId                String              @map("user_id")
+  brokerageAccountId    String              @map("brokerage_account_id")
+  brokerageConnectionId String              @map("brokerage_connection_id")
+  providerTransactionId String              @map("provider_transaction_id")
+  symbol                String?
+  securityName          String?             @map("security_name")
+  transactionType       String              @map("transaction_type")
+  quantity              Decimal?            @db.Decimal(24, 8)
+  price                 Decimal?            @db.Decimal(18, 6)
+  amount                Decimal             @db.Decimal(18, 2)
+  fees                  Decimal?            @db.Decimal(18, 2)
+  date                  DateTime
+  currency              String              @default("USD")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerageAccount      BrokerageAccount    @relation(fields: [brokerageAccountId], references: [id], onDelete: Cascade)
+  brokerageConnection   BrokerageConnection @relation(fields: [brokerageConnectionId], references: [id], onDelete: Cascade)
+
+  @@unique([brokerageConnectionId, providerTransactionId])
+  @@index([userId, brokerageAccountId, date])
+  @@map("stock_transactions")
+}
+
+model StockPriceCache {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  price     Decimal  @db.Decimal(18, 6)
+  currency  String   @default("USD")
+  source    String
+  fetchedAt DateTime @map("fetched_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("stock_price_cache")
+}
+
+model BrokerageSyncLog {
+  id                    String               @id @default(cuid())
+  userId                String               @map("user_id")
+  brokerageConnectionId String?              @map("brokerage_connection_id")
+  provider              String
+  status                String
+  message               String?
+  startedAt             DateTime             @default(now()) @map("started_at")
+  finishedAt            DateTime?            @map("finished_at")
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerageConnection   BrokerageConnection? @relation(fields: [brokerageConnectionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, brokerageConnectionId, startedAt])
+  @@map("brokerage_sync_logs")
+}
+
+model AlertRule {
+  id                   String       @id @default(cuid())
+  userId               String       @map("user_id")
+  name                 String
+  description          String?
+  assetCategory        String       @map("asset_category")
+  assetId              String?      @map("asset_id")
+  symbol               String?
+  alertType            String       @map("alert_type")
+  comparisonOperator   String       @map("comparison_operator")
+  thresholdValue       Decimal?     @map("threshold_value") @db.Decimal(24, 8)
+  thresholdPercent     Decimal?     @map("threshold_percent") @db.Decimal(12, 6)
+  baselineValue        Decimal?     @map("baseline_value") @db.Decimal(24, 8)
+  baselineRoi          Decimal?     @map("baseline_roi") @db.Decimal(12, 6)
+  dueDate              DateTime?    @map("due_date")
+  remindBeforeDays     Int?         @map("remind_before_days")
+  recurrence           String       @default("none")
+  notificationChannels Json         @default("[\"in_app\"]") @map("notification_channels")
+  status               String       @default("active")
+  lastCheckedAt        DateTime?    @map("last_checked_at")
+  lastTriggeredAt      DateTime?    @map("last_triggered_at")
+  cooldownMinutes      Int          @default(60) @map("cooldown_minutes")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events               AlertEvent[]
+
+  @@index([userId, status, assetCategory])
+  @@index([userId, assetId])
+  @@index([userId, symbol])
+  @@map("alert_rules")
+}
+
+model AlertEvent {
+  id                   String             @id @default(cuid())
+  userId               String             @map("user_id")
+  alertRuleId          String             @map("alert_rule_id")
+  assetCategory        String             @map("asset_category")
+  assetId              String?            @map("asset_id")
+  symbol               String?
+  eventTitle           String             @map("event_title")
+  eventMessage         String             @map("event_message")
+  triggerValue         Decimal?           @map("trigger_value") @db.Decimal(24, 8)
+  triggerPercent       Decimal?           @map("trigger_percent") @db.Decimal(12, 6)
+  thresholdValue       Decimal?           @map("threshold_value") @db.Decimal(24, 8)
+  thresholdPercent     Decimal?           @map("threshold_percent") @db.Decimal(12, 6)
+  notificationChannels Json               @default("[\"in_app\"]") @map("notification_channels")
+  deliveryStatus       String             @default("pending") @map("delivery_status")
+  readAt               DateTime?          @map("read_at")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertRule            AlertRule          @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  deliveryLogs         AlertDeliveryLog[]
+
+  @@index([userId, readAt, createdAt])
+  @@index([alertRuleId, createdAt])
+  @@map("alert_events")
+}
+
+model NotificationPreference {
+  id                 String   @id @default(cuid())
+  userId             String   @unique @map("user_id")
+  emailAlertsEnabled Boolean  @default(true) @map("email_alerts_enabled")
+  inAppAlertsEnabled Boolean  @default(true) @map("in_app_alerts_enabled")
+  smsAlertsEnabled   Boolean  @default(false) @map("sms_alerts_enabled")
+  alertEmail         String?  @map("alert_email")
+  phoneNumber        String?  @map("phone_number")
+  quietHoursEnabled  Boolean  @default(false) @map("quiet_hours_enabled")
+  quietHoursStart    String?  @map("quiet_hours_start")
+  quietHoursEnd      String?  @map("quiet_hours_end")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model AlertDeliveryLog {
+  id           String     @id @default(cuid())
+  userId       String     @map("user_id")
+  alertEventId String     @map("alert_event_id")
+  channel      String
+  status       String
+  provider     String
+  errorMessage String?    @map("error_message")
+  sentAt       DateTime?  @map("sent_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertEvent   AlertEvent @relation(fields: [alertEventId], references: [id], onDelete: Cascade)
+
+  @@index([userId, alertEventId, channel])
+  @@map("alert_delivery_logs")
+}
+
+model MarketIndexPriceCache {
+  id            String   @id @default(cuid())
+  symbol        String   @unique
+  name          String
+  price         Decimal  @db.Decimal(24, 8)
+  changeAmount  Decimal  @map("change_amount") @db.Decimal(24, 8)
+  changePercent Decimal  @map("change_percent") @db.Decimal(12, 6)
+  currency      String   @default("USD")
+  source        String
+  fetchedAt     DateTime @map("fetched_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("market_index_price_cache")
+}

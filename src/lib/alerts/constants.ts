@@ -1,0 +1,130 @@
+export const ALERT_ASSET_CATEGORIES = ["mineral", "jewelry", "stock", "market_index", "real_estate", "bank", "bank_account", "bank_transaction"] as const;
+
+export const ALERT_TYPES = [
+  "roi_above_percent",
+  "roi_below_percent",
+  "roi_increased_by_percent",
+  "roi_decreased_by_percent",
+  "price_above",
+  "price_below",
+  "price_increased_by_percent",
+  "price_decreased_by_percent",
+  "value_above",
+  "value_below",
+  "unrealized_gain_above",
+  "unrealized_gain_below",
+  "daily_change_above_percent",
+  "daily_change_below_percent",
+  "payment_due",
+  "rent_due",
+  "custom_date_reminder",
+  "bank_cash_above",
+  "bank_cash_below",
+  "bank_debt_above",
+  "bank_debt_below",
+  "bank_net_cash_below",
+  "bank_account_balance_above",
+  "bank_account_balance_below",
+  "credit_card_payment_due",
+  "bank_transaction_amount_above",
+  "bank_deposit_above",
+  "bank_withdrawal_above",
+] as const;
+
+export const ALERT_COMPARISON_OPERATORS = [
+  "above",
+  "below",
+  "increased_by",
+  "decreased_by",
+  "equals",
+  "due_on",
+  "before_due_date",
+] as const;
+
+export const ALERT_RECURRENCES = ["none", "daily", "weekly", "monthly", "quarterly", "yearly"] as const;
+export const ALERT_CHANNELS = ["in_app", "email", "sms_future"] as const;
+export const ALERT_STATUSES = ["active", "paused", "triggered", "expired"] as const;
+
+export type AlertAssetCategory = (typeof ALERT_ASSET_CATEGORIES)[number];
+export type AlertType = (typeof ALERT_TYPES)[number];
+export type AlertChannel = (typeof ALERT_CHANNELS)[number];
+
+export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
+  roi_above_percent: "ROI above percentage",
+  roi_below_percent: "ROI below percentage",
+  roi_increased_by_percent: "ROI increased from baseline",
+  roi_decreased_by_percent: "ROI decreased from baseline",
+  price_above: "Price above amount",
+  price_below: "Price below amount",
+  price_increased_by_percent: "Price increased from baseline",
+  price_decreased_by_percent: "Price decreased from baseline",
+  value_above: "Value above amount",
+  value_below: "Value below amount",
+  unrealized_gain_above: "Unrealized gain/loss above amount",
+  unrealized_gain_below: "Unrealized gain/loss below amount",
+  daily_change_above_percent: "Daily change above percentage",
+  daily_change_below_percent: "Daily change below percentage",
+  payment_due: "Mortgage or payment due",
+  rent_due: "Rent collection due",
+  custom_date_reminder: "Custom date reminder",
+  bank_cash_above: "Total liquid cash above amount",
+  bank_cash_below: "Total liquid cash below amount",
+  bank_debt_above: "Credit-card debt above amount",
+  bank_debt_below: "Credit-card debt below amount",
+  bank_net_cash_below: "Net cash after debt below amount",
+  bank_account_balance_above: "Account balance above amount",
+  bank_account_balance_below: "Account balance below amount",
+  credit_card_payment_due: "Credit-card payment due",
+  bank_transaction_amount_above: "Large transaction above amount",
+  bank_deposit_above: "Deposit received above amount",
+  bank_withdrawal_above: "Withdrawal or spending above amount",
+};
+
+export const CATEGORY_ALERT_TYPES: Record<AlertAssetCategory, AlertType[]> = {
+  mineral: [
+    "roi_above_percent",
+    "roi_below_percent",
+    "roi_increased_by_percent",
+    "roi_decreased_by_percent",
+    "value_above",
+    "value_below",
+    "price_above",
+    "price_below",
+    "price_increased_by_percent",
+    "price_decreased_by_percent",
+  ],
+  jewelry: [
+    "roi_above_percent",
+    "roi_below_percent",
+    "roi_increased_by_percent",
+    "roi_decreased_by_percent",
+    "value_above",
+    "value_below",
+    "price_above",
+    "price_below",
+  ],
+  stock: [
+    "price_above",
+    "price_below",
+    "price_increased_by_percent",
+    "price_decreased_by_percent",
+    "roi_above_percent",
+    "roi_below_percent",
+    "value_above",
+    "value_below",
+    "unrealized_gain_above",
+    "unrealized_gain_below",
+  ],
+  market_index: [
+    "price_above",
+    "price_below",
+    "daily_change_above_percent",
+    "daily_change_below_percent",
+    "price_increased_by_percent",
+    "price_decreased_by_percent",
+  ],
+  real_estate: ["payment_due", "rent_due", "custom_date_reminder", "value_above", "value_below"],
+  bank: ["bank_cash_above", "bank_cash_below", "bank_debt_above", "bank_debt_below", "bank_net_cash_below"],
+  bank_account: ["bank_account_balance_above", "bank_account_balance_below", "credit_card_payment_due"],
+  bank_transaction: ["bank_transaction_amount_above", "bank_deposit_above", "bank_withdrawal_above"],
+};

@@ -1,0 +1,162 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-my_assets_tracker}
+      POSTGRES_USER: ${POSTGRES_USER:-asset_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-asset_user} -d ${POSTGRES_DB:-my_assets_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - app-network
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    profiles:
+      - tools
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    networks:
+      - app-network
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    profiles:
+      - tools
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["npm", "run", "db:seed"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      APP_USER_EMAIL: ${APP_USER_EMAIL:-owner@example.com}
+      APP_USER_NAME: ${APP_USER_NAME:-Portfolio Owner}
+    networks:
+      - app-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:?NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required}
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL:-/}
+        NEXT_PUBLIC_ENABLE_STOCKS_FEATURE: ${NEXT_PUBLIC_ENABLE_STOCKS_FEATURE:-false}
+        NEXT_PUBLIC_ENABLE_BANKS_FEATURE: ${NEXT_PUBLIC_ENABLE_BANKS_FEATURE:-false}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:?NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?CLERK_SECRET_KEY is required}
+      CLERK_WEBHOOK_SECRET: ${CLERK_WEBHOOK_SECRET:-}
+      OWNER_EMAILS: ${OWNER_EMAILS:?OWNER_EMAILS is required}
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/}
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL:-/}
+      ALLOW_DEV_AUTH_BYPASS: "false"
+      ENABLE_PLAID_FEATURES: ${ENABLE_PLAID_FEATURES:-false}
+      NEXT_PUBLIC_ENABLE_STOCKS_FEATURE: ${NEXT_PUBLIC_ENABLE_STOCKS_FEATURE:-false}
+      NEXT_PUBLIC_ENABLE_BANKS_FEATURE: ${NEXT_PUBLIC_ENABLE_BANKS_FEATURE:-false}
+      APP_USER_EMAIL: ${APP_USER_EMAIL:-owner@example.com}
+      APP_USER_NAME: ${APP_USER_NAME:-Portfolio Owner}
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+      PLAID_PRODUCTS: ${PLAID_PRODUCTS:-investments}
+      PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US}
+      PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI}
+      PLAID_STOCKS_REDIRECT_URI: ${PLAID_STOCKS_REDIRECT_URI:-}
+      PLAID_BANKS_REDIRECT_URI: ${PLAID_BANKS_REDIRECT_URI:-}
+      SNAPTRADE_CLIENT_ID: ${SNAPTRADE_CLIENT_ID:-}
+      SNAPTRADE_CONSUMER_KEY: ${SNAPTRADE_CONSUMER_KEY:-}
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:?TOKEN_ENCRYPTION_KEY is required}
+      UPLOAD_DIR: /app/storage/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-10}
+      METAL_PRICE_PROVIDER: ${METAL_PRICE_PROVIDER:-manual}
+      METAL_PRICE_API_KEY: ${METAL_PRICE_API_KEY:-}
+      PRICE_CACHE_TTL_MINUTES: ${PRICE_CACHE_TTL_MINUTES:-60}
+      MARKET_INDEX_CACHE_TTL_MINUTES: ${MARKET_INDEX_CACHE_TTL_MINUTES:-15}
+      ALERTS_EVALUATION_SECRET: ${ALERTS_EVALUATION_SECRET:?ALERTS_EVALUATION_SECRET is required}
+      CRON_SECRET: ${CRON_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      ALERT_FROM_EMAIL: ${ALERT_FROM_EMAIL:-Asset Alerts <alerts@example.com>}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+    volumes:
+      - upload-data:/app/storage/uploads
+    networks:
+      - app-network
+
+  alerts-cron:
+    image: alpine:3.20
+    restart: unless-stopped
+    profiles:
+      - cron
+    depends_on:
+      - app
+    environment:
+      ALERTS_EVALUATION_SECRET: ${ALERTS_EVALUATION_SECRET:?ALERTS_EVALUATION_SECRET is required}
+      ALERTS_EVALUATION_INTERVAL_SECONDS: ${ALERTS_EVALUATION_INTERVAL_SECONDS:-900}
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        while true; do
+          wget --quiet --method=POST
+          --header="Authorization: Bearer $$ALERTS_EVALUATION_SECRET"
+          -O - http://app:3000/api/alerts/evaluate || true;
+          sleep "$$ALERTS_EVALUATION_INTERVAL_SECONDS";
+        done
+    networks:
+      - app-network
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  upload-data:
+  caddy-data:
+  caddy-config:
