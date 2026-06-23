@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useSignUp } from "@clerk/nextjs";
+import { useClerk, useSignUp, useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, LoaderCircle, Mail } from "lucide-react";
 import { usernameSchema } from "@/lib/user-access";
@@ -14,6 +14,8 @@ function clerkErrorMessage(error: unknown) {
 
 export function PasswordlessSignUp() {
   const { signUp, fetchStatus } = useSignUp();
+  const { signOut } = useClerk();
+  const { isSignedIn } = useUser();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -35,6 +37,12 @@ export function PasswordlessSignUp() {
 
     setPending(true);
     try {
+      if (isSignedIn) {
+        setError("Signing out the current browser session before creating the new account...");
+        await signOut();
+        setError("");
+      }
+
       const availability = await fetch("/api/auth/username-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
