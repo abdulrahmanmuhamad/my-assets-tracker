@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useSignIn } from "@clerk/nextjs";
+import { useClerk, useSignIn, useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { ArrowRight, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 
@@ -13,6 +13,8 @@ function clerkErrorMessage(error: unknown) {
 
 export function PasswordlessSignIn() {
   const { signIn, fetchStatus } = useSignIn();
+  const { signOut } = useClerk();
+  const { isSignedIn } = useUser();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -26,6 +28,12 @@ export function PasswordlessSignIn() {
     setPending(true);
     setError("");
     try {
+      if (isSignedIn) {
+        setError("Signing out the current browser session before starting a new sign-in...");
+        await signOut();
+        setError("");
+      }
+
       const result = await signIn.emailCode.sendCode({
         emailAddress: email.trim().toLowerCase(),
       });
