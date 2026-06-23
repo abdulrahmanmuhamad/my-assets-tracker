@@ -1,16 +1,9 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { AuthFrame } from "@/components/auth/auth-frame";
 import { PasswordlessSignIn } from "@/components/auth/passwordless-sign-in";
 
-export default async function SignInPage() {
+export default function SignInPage() {
   const configured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
-  if (configured) {
-    const session = await auth();
-    if (session.userId) redirect("/dashboard");
-  }
-
   return (
     <AuthFrame eyebrow="Private wealth workspace" title="Your portfolio, behind verified access." description="Sign in with a secure email code. Portfolio data remains isolated to your account and is never shared with application administrators.">
       {configured ? <PasswordlessSignIn /> : (
