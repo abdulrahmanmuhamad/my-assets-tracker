@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isAuthPage = ["/sign-in", "/sign-up", "/verify-email", "/pending-approval", "/account-disabled"].some((route) => pathname.startsWith(route));
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [profile, setProfile] = useState<{ username?: string | null; displayName?: string | null; email?: string | null } | null>(null);
+  const [profile, setProfile] = useState<{ username?: string | null; displayName?: string | null; email?: string | null; role?: string | null } | null>(null);
   const stocksEnabled = isStocksFeatureEnabled();
   const banksEnabled = isBanksFeatureEnabled();
 
@@ -113,15 +113,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-          <div className="border-t border-slate-200/80 p-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-              <div className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                <BarChart3 className="h-4 w-4 text-sky-600" />
-                Portfolio OS
+          {profile?.role === "owner" ? (
+            <div className="border-t border-slate-200/80 p-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                  <BarChart3 className="h-4 w-4 text-sky-600" />
+                  Portfolio OS
+                </div>
+                <div className="mt-2 text-xs leading-5 text-slate-500">PostgreSQL, Prisma, private file routes.</div>
               </div>
-              <div className="mt-2 text-xs leading-5 text-slate-500">PostgreSQL, Prisma, private file routes.</div>
             </div>
-          </div>
+          ) : null}
         </div>
       </aside>
       <div className="lg:pl-72">

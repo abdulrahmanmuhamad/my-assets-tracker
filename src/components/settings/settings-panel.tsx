@@ -63,7 +63,7 @@ export function SettingsPanel({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("profile");
-  const privileged = securityUser.role === "owner" || securityUser.role === "admin";
+  const ownerOnly = securityUser.role === "owner";
   const stocksEnabled = isStocksFeatureEnabled();
   const banksEnabled = isBanksFeatureEnabled();
   const tabs = [
@@ -72,8 +72,7 @@ export function SettingsPanel({
     ["privacy", "Privacy & Display"],
     ["notifications", "Notifications"],
     ["portfolio", "Portfolio Settings"],
-    ["integrations", "Integrations"],
-    ...(privileged ? [["access", "User Access"], ["developer", "Developer / API Setup"]] : []),
+    ...(ownerOnly ? [["integrations", "Integrations"], ["access", "User Access"], ["developer", "Developer / API Setup"]] : []),
   ];
 
   function update<K extends keyof SettingsRecord>(key: K, value: SettingsRecord[K]) {
@@ -211,8 +210,8 @@ export function SettingsPanel({
 
       <div className="grid gap-4 xl:grid-cols-2">
         {activeTab === "profile" ? <ProfileSettings initialUser={securityUser} clerkConfigured={Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)} /> : null}
-        {activeTab === "access" && privileged ? <UserAccessSettings actorRole={securityUser.role} /> : null}
-        {activeTab === "developer" && developerReadiness ? <DeveloperSetup readiness={developerReadiness} /> : null}
+        {activeTab === "access" && ownerOnly ? <UserAccessSettings actorRole={securityUser.role} /> : null}
+        {activeTab === "developer" && ownerOnly && developerReadiness ? <DeveloperSetup readiness={developerReadiness} /> : null}
 
         <Card className={activeTab === "security" ? "xl:col-span-2" : "hidden"}>
           <CardHeader>
@@ -315,7 +314,7 @@ export function SettingsPanel({
           </CardContent>
         </Card>
 
-        <Card className={activeTab === "integrations" ? "xl:col-span-2" : "hidden"}>
+        <Card className={activeTab === "integrations" && ownerOnly ? "xl:col-span-2" : "hidden"}>
           <CardHeader>
             <h2 className="text-base font-semibold text-slate-950">Integrations</h2>
           </CardHeader>

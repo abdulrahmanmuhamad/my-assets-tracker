@@ -29,7 +29,7 @@ export default async function SettingsPage() {
       }}
       initialBrokerageConnections={stocks.connections}
       initialNotificationPreferences={notificationPreferences}
-      developerReadiness={user.role === "owner" || user.role === "admin" ? {
+      developerReadiness={user.role === "owner" ? {
         clerk: Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY),
         ownerEmails: Boolean(process.env.OWNER_EMAILS?.trim()),
         clerkWebhook: Boolean(process.env.CLERK_WEBHOOK_SECRET),
