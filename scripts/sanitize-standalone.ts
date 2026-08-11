@@ -5,6 +5,11 @@ const projectRoot = process.cwd();
 const standaloneRoot = path.resolve(projectRoot, ".next", "standalone");
 const expectedRoot = path.join(projectRoot, ".next", "standalone");
 
+if (process.env.VERCEL === "1") {
+  console.log("Skipped standalone sanitization for the Vercel adapter build.");
+  process.exit(0);
+}
+
 if (standaloneRoot !== expectedRoot || !existsSync(standaloneRoot)) {
   throw new Error(`Unexpected or missing standalone output: ${standaloneRoot}`);
 }
