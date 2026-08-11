@@ -4,6 +4,10 @@
     {
       "path": "/api/alerts/evaluate",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/providers/sync",
+      "schedule": "17 7 * * *"
     }
   ]
 }

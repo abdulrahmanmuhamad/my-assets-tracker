@@ -147,6 +147,8 @@ No SimpleFIN or SnapTrade credentials belong in `.env`. Each approved user confi
 4. Paste that token into the app once. The app exchanges it server-side, encrypts the returned read-only access URL with `TOKEN_ENCRYPTION_KEY`, and immediately discards the setup token.
 5. Use **Sync All** for balances and transactions. SimpleFIN updates source data about daily and limits clients to 24 requests per day, so the app batches all connected SimpleFIN banks into one refresh.
 
+Vercel also calls the secret-protected provider sync route once daily at 07:17 UTC. Only approved users with encrypted provider credentials are considered. Manual **Sync All** remains available for an immediate refresh.
+
 ### SnapTrade Personal Stocks
 
 1. Create a free SnapTrade Personal account at `https://snaptrade.com/snaptrade-personal`.
@@ -354,6 +356,7 @@ Provider endpoints:
 - `POST /api/brokerage/snaptrade/connect` returns only a short-lived portal URL
 - `POST /api/brokerage/snaptrade/finalize` imports the authenticated user's connections
 - `POST /api/brokerage/sync` and `POST /api/brokerage/sync/:id`
+- `GET|POST /api/providers/sync` with Vercel's `CRON_SECRET` bearer token
 
 Connection and sync routes scope every database operation by the authenticated user ID. Provider credentials and access URLs are never serialized to the frontend.
 

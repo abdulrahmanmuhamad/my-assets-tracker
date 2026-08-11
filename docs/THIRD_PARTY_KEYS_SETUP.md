@@ -111,6 +111,8 @@ These are personal, per-user integrations. Do not put SimpleFIN or SnapTrade Per
 
 SimpleFIN generally updates data daily. Its fair-use limit is 24 requests per day, so do not attach a high-frequency scheduler to bank sync.
 
+The checked-in Vercel schedule calls `/api/providers/sync` once daily at 07:17 UTC. Vercel supplies `CRON_SECRET` as a bearer token. The endpoint rejects requests when that secret is missing or incorrect and returns counts only, never user IDs or provider errors.
+
 ### SnapTrade Personal
 
 1. Create a free SnapTrade Personal account at `https://snaptrade.com/snaptrade-personal`.
