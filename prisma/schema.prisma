@@ -41,12 +41,27 @@ model User {
   bankAccounts           BankAccount[]
   bankTransactions       BankTransaction[]
   bankSyncLogs           BankSyncLog[]
+  providerCredentials    ProviderCredential[]
   alertRules             AlertRule[]
   alertEvents            AlertEvent[]
   notificationPreference NotificationPreference?
   alertDeliveryLogs      AlertDeliveryLog[]
 
   @@map("users")
+}
+
+model ProviderCredential {
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  provider            String
+  credentialEncrypted String   @map("credential_encrypted")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId, provider])
+  @@map("provider_credentials")
 }
 
 model AssetCategory {

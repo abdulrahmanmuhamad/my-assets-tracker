@@ -1,13 +1,13 @@
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
-export type DeveloperReadiness = Record<"clerk" | "ownerEmails" | "clerkWebhook" | "plaid" | "tokenEncryption" | "resend" | "alerts", boolean>;
+export type DeveloperReadiness = Record<"clerk" | "ownerEmails" | "clerkWebhook" | "providerConnections" | "tokenEncryption" | "resend" | "alerts", boolean>;
 
 const labels: Record<keyof DeveloperReadiness, string> = {
   clerk: "Clerk authentication keys",
   ownerEmails: "Owner bootstrap emails",
   clerkWebhook: "Clerk webhook signing secret",
-  plaid: "Plaid provider credentials",
+  providerConnections: "SimpleFIN and SnapTrade Personal",
   tokenEncryption: "Provider token encryption key",
   resend: "Resend email provider",
   alerts: "Alert evaluation secret",

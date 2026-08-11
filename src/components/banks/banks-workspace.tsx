@@ -1,15 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
-import { usePlaidLink } from "react-plaid-link";
-import { AlertTriangle, BellPlus, CreditCard, Landmark, Link2, RefreshCcw, ShieldCheck, Trash2, WalletCards } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { AlertTriangle, BellPlus, CreditCard, ExternalLink, Landmark, Link2, RefreshCcw, ShieldCheck, Trash2, WalletCards } from "lucide-react";
 import { AlertRuleForm } from "@/components/alerts/alert-rule-form";
 import { PrivacyToggleButton } from "@/components/privacy/privacy-toggle-button";
 import { SensitiveCurrency } from "@/components/privacy/sensitive-value";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, MetricCard } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
 import { EmptyState, PageHeader } from "@/components/ui/patterns";
 import type { AlertRuleRecord, AlertTarget } from "@/lib/alerts/client-types";
 import { cn, formatDisplayDate, titleFromSnake } from "@/lib/utils";
@@ -98,7 +98,8 @@ function accountSummary(accounts: BankAccount[]) {
 export function BanksWorkspace({ initialPortfolio }: { initialPortfolio: BanksPortfolio }) {
   const [portfolio, setPortfolio] = useState(initialPortfolio);
   const [activeConnectionId, setActiveConnectionId] = useState(initialPortfolio.connections[0]?.id || "");
-  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [setupToken, setSetupToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [alertTarget, setAlertTarget] = useState<AlertTarget | null>(null);
@@ -112,28 +113,6 @@ export function BanksWorkspace({ initialPortfolio }: { initialPortfolio: BanksPo
     setActiveConnectionId((current) => data.connections.some((connection: BankConnection) => connection.id === current) ? current : data.connections[0]?.id || "");
   }, []);
 
-  const onSuccess = useCallback(async (publicToken: string) => {
-    setPending(true);
-    setError("");
-    try {
-      const response = await fetch("/api/banks/plaid/exchange-public-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicToken }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not connect bank");
-      await refresh();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not connect bank");
-    } finally {
-      setPending(false);
-      setLinkToken(null);
-    }
-  }, [refresh]);
-
-  const { open, ready } = usePlaidLink({ token: linkToken, onSuccess });
-  useEffect(() => { if (linkToken && ready) open(); }, [linkToken, open, ready]);
   useEffect(() => {
     Promise.all([
       fetch("/api/alerts?assetCategory=bank", { cache: "no-store" }).then((response) => response.ok ? response.json() : []),
@@ -141,16 +120,28 @@ export function BanksWorkspace({ initialPortfolio }: { initialPortfolio: BanksPo
     ]).then(([bankRules, accountRules]) => setAlertRules([...bankRules, ...accountRules])).catch(() => setAlertRules([]));
   }, []);
 
-  async function connectBank() {
+  function connectBank() {
+    setError("");
+    setConnectOpen(true);
+  }
+
+  async function submitSimpleFin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setPending(true);
     setError("");
     try {
-      const response = await fetch("/api/banks/plaid/create-link-token", { method: "POST" });
+      const response = await fetch("/api/banks/simplefin/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setupToken }),
+      });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not start bank linking");
-      setLinkToken(data.linkToken);
+      if (!response.ok) throw new Error(data.error || "Could not connect SimpleFIN");
+      setSetupToken("");
+      setConnectOpen(false);
+      await refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not start bank linking");
+      setError(caught instanceof Error ? caught.message : "Could not connect SimpleFIN");
     } finally {
       setPending(false);
     }
@@ -172,13 +163,13 @@ export function BanksWorkspace({ initialPortfolio }: { initialPortfolio: BanksPo
   }
 
   async function disconnect(connectionId: string) {
-    if (!window.confirm("Disconnect this bank? The encrypted provider token will be removed.")) return;
+    if (!window.confirm("Disconnect this bank and remove its imported accounts and transactions from this portfolio?")) return;
     setPending(true);
     try {
       const response = await fetch(`/api/banks/connections/${connectionId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deleteData: false }),
+        body: JSON.stringify({ deleteData: true }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not disconnect bank");
@@ -322,10 +313,40 @@ export function BanksWorkspace({ initialPortfolio }: { initialPortfolio: BanksPo
           </table>
         </div>
         <div className="grid gap-3 p-4 md:hidden">{latestTransactions.map((transaction) => <article key={transaction.id} className="rounded-md border border-slate-200 bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-950">{transaction.merchantName || transaction.name}</div><div className="mt-1 text-xs text-slate-500">{transaction.accountName} / {formatDisplayDate(transaction.date)}</div></div><SensitiveCurrency value={transaction.amount} className="font-mono font-semibold" label="transaction amount" /></div><div className="mt-3 flex flex-wrap gap-2"><Badge tone={transaction.pending ? "warning" : "positive"}>{transaction.pending ? "Pending" : "Posted"}</Badge><Badge tone="neutral">{transaction.personalFinanceCategory || transaction.category || "Uncategorized"}</Badge></div></article>)}</div>
-        {!latestTransactions.length ? <CardContent><EmptyState title="No transactions yet" description="Transactions appear after Plaid finishes preparing the Transactions product. Balances remain available while it is pending." /></CardContent> : null}
+        {!latestTransactions.length ? <CardContent><EmptyState title="No transactions yet" description="Transactions will appear after SimpleFIN completes the first account refresh." /></CardContent> : null}
       </Card>
 
-      <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />Bank credentials are never stored by this app. Plaid access tokens are encrypted at rest and never returned to the browser.</div>
+      <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />Bank credentials are never received by this app. The read-only SimpleFIN access URL is encrypted at rest and never returned to the browser.</div>
+
+      <Modal open={connectOpen} title="Connect banks with SimpleFIN" onClose={() => !pending && setConnectOpen(false)} size="md">
+        <form className="space-y-5" onSubmit={submitSimpleFin}>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-950">SimpleFIN Bridge</div>
+            <div className="mt-1 text-sm leading-6 text-slate-600">Read-only bank balances and transactions. SimpleFIN currently charges $15 per year or $1.50 per month.</div>
+            <Button className="mt-4 w-full sm:w-auto" variant="secondary" onClick={() => window.open("https://bridge.simplefin.org/simplefin/create", "_blank", "noopener,noreferrer")} icon={<ExternalLink className="h-4 w-4" />}>
+              Create setup token
+            </Button>
+          </div>
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-800">One-time setup token</span>
+            <textarea
+              className="mt-2 min-h-28 w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs leading-5 text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              value={setupToken}
+              onChange={(event) => setSetupToken(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Paste the token from SimpleFIN Bridge"
+              required
+            />
+          </label>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setConnectOpen(false)} disabled={pending}>Cancel</Button>
+            <Button className="w-full sm:w-auto" type="submit" disabled={pending || !setupToken.trim()} icon={<Link2 className="h-4 w-4" />}>
+              {pending ? "Connecting..." : "Connect banks"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <AlertRuleForm open={Boolean(alertTarget)} target={alertTarget} onClose={() => setAlertTarget(null)} onSaved={(rule) => setAlertRules((current) => [rule, ...current.filter((item) => item.id !== rule.id)])} />
     </div>

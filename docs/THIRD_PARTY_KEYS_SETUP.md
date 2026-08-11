@@ -7,7 +7,7 @@ This application keeps secrets on the server. Never paste secret values into bro
 1. Create PostgreSQL and set `DATABASE_URL`.
 2. Configure Clerk Development, email links, and `OWNER_EMAILS`.
 3. Generate `TOKEN_ENCRYPTION_KEY` and alert secrets.
-4. Configure Plaid Sandbox.
+4. Configure SimpleFIN and SnapTrade Personal after signing in to the app.
 5. Optionally configure Resend.
 6. Apply migrations, run the readiness checks, then start the app.
 7. Add the Clerk webhook after a public HTTPS URL is available.
@@ -23,8 +23,9 @@ This application keeps secrets on the server. Never paste secret values into bro
 | `CLERK_WEBHOOK_SECRET` | Secret | Verifies Clerk webhook signatures |
 | `OWNER_EMAILS` | Server configuration | Verified emails that bootstrap as owners |
 | `DATABASE_URL` | Secret | PostgreSQL credentials |
-| `PLAID_CLIENT_ID`, `PLAID_SECRET` | Secret | Plaid server API |
-| `TOKEN_ENCRYPTION_KEY` | Critical secret | Encrypts Plaid access tokens at rest |
+| SimpleFIN setup/access URL | Per-user secret | Entered in Banks; encrypted in PostgreSQL |
+| SnapTrade Personal Client ID/Consumer Key | Per-user secret | Entered in Stocks; encrypted in PostgreSQL |
+| `TOKEN_ENCRYPTION_KEY` | Critical secret | Encrypts provider credentials at rest |
 | `RESEND_API_KEY` | Secret | Sends alert email |
 | `ALERTS_EVALUATION_SECRET`, `CRON_SECRET` | Secret | Authorizes alert evaluation |
 | `METAL_PRICE_API_KEY` | Secret when used | Optional metal provider key |
@@ -93,29 +94,34 @@ The app also synchronizes the current Clerk user on authenticated requests, so l
 
 Email changes use Clerk's User Profile. Clerk verifies the new address before it becomes primary; the local record continues to match by Clerk user ID, preventing a second portfolio user from being created.
 
-## 2. Plaid
+## 2. Bank And Brokerage Providers
 
-Official references: [Plaid Dashboard](https://dashboard.plaid.com/), [Link for web](https://plaid.com/docs/link/web/), and [going to Production](https://plaid.com/docs/quickstart/#going-to-production).
+These are personal, per-user integrations. Do not put SimpleFIN or SnapTrade Personal credentials in Vercel or `.env`.
 
-1. Create a Plaid application and open **Team Settings > Keys**.
-2. Copy the client ID and the **Sandbox** secret.
-3. Request or enable Investments, Auth, Transactions, and Liabilities in **Products**. Product availability and Production access require Plaid approval.
-4. Add `http://localhost:3001/stocks` and `http://localhost:3001/banks` to Plaid's allowed redirect URI list. This application currently sends the single `PLAID_REDIRECT_URI` value to both Link flows, so set it to the page you are actively testing if Plaid requires a redirect for that institution.
-5. Set:
+### SimpleFIN Bridge
 
-```env
-PLAID_CLIENT_ID="..."
-PLAID_SECRET="sandbox-secret"
-PLAID_ENV="sandbox"
-PLAID_PRODUCTS="investments,auth,transactions,liabilities"
-PLAID_COUNTRY_CODES="US"
-PLAID_REDIRECT_URI="http://localhost:3001/stocks"
-```
+1. Sign in to the application and open **Banks**.
+2. Choose **Connect Bank**, then **Create setup token**. This opens the official SimpleFIN Bridge site.
+3. Create a SimpleFIN account and select the $15/year or $1.50/month plan.
+4. Connect the bank inside SimpleFIN. The application never receives the online-banking username or password.
+5. Generate a one-time setup token in SimpleFIN, paste it into the app, and choose **Connect banks**.
+6. The server decodes only an official `bridge.simplefin.org` claim URL, exchanges it once, validates the returned URL, and encrypts the read-only access URL with AES-256-GCM.
+7. Confirm balances and transactions appear. **Sync All** batches all SimpleFIN connections into a single provider request.
+8. To revoke provider access completely, disable the token in SimpleFIN and disconnect every SimpleFIN bank in this app.
 
-6. Start the app and connect a Sandbox institution from Stocks or Banks. Use Plaid's documented Sandbox credentials in Link, never real brokerage credentials.
-7. Confirm connect, sync, and disconnect. The browser receives only a short-lived Link token/public token; the exchanged access token is encrypted before database storage and is never returned to the frontend.
+SimpleFIN generally updates data daily. Its fair-use limit is 24 requests per day, so do not attach a high-frequency scheduler to bank sync.
 
-For production, obtain Plaid Production approval, use the Production secret, set `PLAID_ENV=production`, and allow the exact HTTPS redirect URLs. Do not reuse Sandbox tokens.
+### SnapTrade Personal
+
+1. Create a free SnapTrade Personal account at `https://snaptrade.com/snaptrade-personal`.
+2. Open `https://dashboard.snaptrade.com` and copy the **Personal Client ID** and **Personal Consumer Key**.
+3. In this application, open **Stocks** and choose **Connect Brokerage**.
+4. Enter those two Personal API values. They are sent only to this application's authenticated server route and encrypted before storage.
+5. Continue to SnapTrade and connect the brokerage there. The requested connection type is read-only.
+6. SnapTrade redirects to `/stocks?status=SUCCESS`; the app finalizes the connection and imports accounts, balances, current unified positions, and available activities.
+7. Use **Sync All**, **Reconnect**, and **Disconnect** from Stocks. Disconnect also asks SnapTrade to remove the authorization and deletes imported local data.
+
+Each authenticated application user must use their own SimpleFIN and SnapTrade Personal accounts. All imported records and encrypted credential rows are scoped to that local user ID. Legacy Plaid routes return `503` unless `ENABLE_PLAID_FEATURES=true` is deliberately enabled.
 
 ## 3. Resend
 
@@ -174,7 +180,7 @@ Generate a 32-byte Base64 key:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-Set the output as `TOKEN_ENCRYPTION_KEY`. Back it up in a password manager or secret manager. Tokens use AES-256-GCM. Changing or losing this key makes existing Plaid tokens unreadable and forces every bank/brokerage connection to reconnect.
+Set the output as `TOKEN_ENCRYPTION_KEY`. Back it up in a password manager or secret manager. Credentials use AES-256-GCM. Changing or losing this key makes existing SimpleFIN and SnapTrade credentials unreadable and forces every bank/brokerage connection to reconnect.
 
 ## 7. Alerts And Cron
 
@@ -229,12 +235,7 @@ NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL="/pending-approval"
 ALLOW_DEV_AUTH_BYPASS="false"
 APP_USER_EMAIL="owner@example.com"
 APP_USER_NAME="Portfolio Owner"
-PLAID_CLIENT_ID="..."
-PLAID_SECRET="sandbox-secret"
-PLAID_ENV="sandbox"
-PLAID_PRODUCTS="investments,auth,transactions,liabilities"
-PLAID_COUNTRY_CODES="US"
-PLAID_REDIRECT_URI="http://localhost:3001/stocks"
+ENABLE_PLAID_FEATURES="false"
 TOKEN_ENCRYPTION_KEY="generated-base64-key"
 UPLOAD_DIR="./storage/uploads"
 MAX_UPLOAD_MB="10"
@@ -264,12 +265,7 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL="/sign-up"
 NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL="/"
 NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL="/pending-approval"
 ALLOW_DEV_AUTH_BYPASS="false"
-PLAID_CLIENT_ID="..."
-PLAID_SECRET="production-secret"
-PLAID_ENV="production"
-PLAID_PRODUCTS="investments,auth,transactions,liabilities"
-PLAID_COUNTRY_CODES="US"
-PLAID_REDIRECT_URI="https://assets.example.com/stocks"
+ENABLE_PLAID_FEATURES="false"
 TOKEN_ENCRYPTION_KEY="permanent-generated-base64-key"
 RESEND_API_KEY="re_..."
 ALERT_FROM_EMAIL="Asset Alerts <alerts@assets.example.com>"
@@ -294,4 +290,4 @@ npm run alerts:evaluate
 npm run dev -- -p 3001
 ```
 
-Then manually test: owner sign-up/sign-in, non-owner sign-up, owner approval, suspended access, Clerk email change, Plaid Sandbox connect/sync/disconnect, in-app notification read state, and Resend or console fallback.
+Then manually test: owner sign-up/sign-in, non-owner sign-up, owner approval, suspended access, Clerk email change, SimpleFIN connect/sync/disconnect, SnapTrade Personal connect/sync/disconnect, in-app notification read state, and Resend or console fallback.

@@ -348,7 +348,6 @@ export function SettingsPanel({
               <span className="flex items-center gap-3"><WalletCards className="h-4 w-4 text-emerald-600" />Include liquid cash in portfolio total</span>
               <input className="h-5 w-5" type="checkbox" checked={banksEnabled && settings.includeLiquidCashInPortfolio} disabled={!banksEnabled} onChange={(event) => update("includeLiquidCashInPortfolio", event.target.checked)} />
             </label>
-            {!banksEnabled ? <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Bank syncing is coming soon. This setting will be available after Plaid approval.</p> : null}
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               <span className="flex items-center gap-3"><MonitorCog className="h-4 w-4 text-violet-600" />Theme</span>
               <select className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm" value={settings.theme} onChange={(event) => update("theme", event.target.value)}>
@@ -366,10 +365,9 @@ export function SettingsPanel({
             <h2 className="text-base font-semibold text-slate-950">Integrations</h2>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-4"><div className="text-sm font-semibold text-slate-950">Plaid</div><Badge tone={stocksEnabled && banksEnabled ? "positive" : "warning"} className="mt-3">{stocksEnabled && banksEnabled ? "Enabled" : "Approval pending / Disabled"}</Badge></div>
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-4"><div className="text-sm font-semibold text-slate-950">Stocks</div><Badge tone={stocksEnabled ? "positive" : "warning"} className="mt-3">{stocksEnabled ? "Enabled" : "Coming Soon"}</Badge></div>
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-4"><div className="text-sm font-semibold text-slate-950">Banks</div><Badge tone={banksEnabled ? "positive" : "warning"} className="mt-3">{banksEnabled ? "Enabled" : "Coming Soon"}</Badge></div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-4"><div className="text-sm font-semibold text-slate-950">SnapTrade Personal</div><p className="mt-1 text-xs leading-5 text-slate-500">Read-only brokerage syncing with credentials supplied by each user.</p><Badge tone="positive" className="mt-3">Available</Badge></div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-4"><div className="text-sm font-semibold text-slate-950">SimpleFIN Bridge</div><p className="mt-1 text-xs leading-5 text-slate-500">Read-only bank syncing through each user&apos;s SimpleFIN subscription.</p><Badge tone="positive" className="mt-3">Available</Badge></div>
             </div>
             {stocksEnabled ? brokerageConnections.map((connection) => (
               <div key={connection.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">

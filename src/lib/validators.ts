@@ -122,7 +122,7 @@ export const settingsSchema = z.object({
   financialValuesHiddenByDefault: z.boolean().default(true),
 });
 
-export const brokerageProviderSchema = z.enum(["plaid"]);
+export const brokerageProviderSchema = z.enum(["plaid", "snaptrade"]);
 
 export const createLinkTokenSchema = z.object({
   provider: brokerageProviderSchema.default("plaid"),
@@ -130,6 +130,20 @@ export const createLinkTokenSchema = z.object({
 
 export const exchangePublicTokenSchema = z.object({
   publicToken: z.string().trim().min(1),
+});
+
+export const simpleFinConnectSchema = z.object({
+  setupToken: z.string().trim().min(20).max(4096),
+});
+
+export const snapTradeConnectSchema = z.object({
+  clientId: z.string().trim().min(2).max(200).optional(),
+  consumerKey: z.string().trim().min(10).max(1000).optional(),
+  connectionId: z.string().trim().min(1).max(200).optional(),
+}).superRefine((input, context) => {
+  if (Boolean(input.clientId) !== Boolean(input.consumerKey)) {
+    context.addIssue({ code: "custom", message: "SnapTrade Client ID and Consumer Key must be provided together" });
+  }
 });
 
 export const syncBrokerageSchema = z.object({

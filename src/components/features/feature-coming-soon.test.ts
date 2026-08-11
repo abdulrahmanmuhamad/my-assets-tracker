@@ -2,16 +2,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-describe("Coming Soon feature covers", () => {
-  it("uses the reusable professional overlay on stocks and banks", () => {
+describe("bank and stock provider availability", () => {
+  it("renders both workspaces directly without the old Plaid approval overlay", () => {
     const stocks = readFileSync(resolve(process.cwd(), "src/app/stocks/page.tsx"), "utf8");
     const banks = readFileSync(resolve(process.cwd(), "src/app/banks/page.tsx"), "utf8");
-    const overlay = readFileSync(resolve(process.cwd(), "src/components/features/feature-coming-soon-overlay.tsx"), "utf8");
-    expect(stocks).toContain("Brokerage account syncing is being prepared");
-    expect(banks).toContain("Bank account syncing is being prepared");
-    expect(stocks).toContain("FeatureComingSoonOverlay");
-    expect(banks).toContain("FeatureComingSoonOverlay");
-    expect(overlay).toContain("backdrop-blur-sm");
-    expect(overlay).toContain("pointer-events-none");
+    expect(stocks).toContain("<StocksWorkspace");
+    expect(banks).toContain("<BanksWorkspace");
+    expect(stocks).not.toContain("FeatureComingSoonOverlay");
+    expect(banks).not.toContain("FeatureComingSoonOverlay");
   });
 });

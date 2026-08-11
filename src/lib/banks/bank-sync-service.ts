@@ -2,11 +2,13 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret, encryptSecret } from "@/lib/encryption";
+import { deleteProviderCredential, getProviderCredential, saveProviderCredential } from "@/lib/provider-credentials";
 import { toNumber } from "@/lib/calculations";
 import { calculateAllBanksSummary } from "./calculations";
 import { exchangeBankPublicToken as exchangePlaidToken, syncPlaidBankAccessToken } from "./plaid-bank-provider";
 import { assertBankConnectionOwnership, bankAccountOwnershipWhere, bankOwnershipWhere, safeBankConnection } from "./security";
 import type { BankSyncResult } from "./types";
+import { claimSimpleFinSetupToken, fetchSimpleFinSnapshot, type SimpleFinConnectionSync } from "./simplefin-provider";
 
 function serializeAccount(account: {
   id: string;
@@ -117,11 +119,13 @@ async function writeBankSyncData(userId: string, connectionId: string, sync: Ban
     accountIdByProviderId.set(account.providerAccountId, saved.id);
   }
 
-  if (activeProviderAccountIds.length) {
-    await prisma.bankAccount.deleteMany({
-      where: { userId, bankConnectionId: connectionId, providerAccountId: { notIn: activeProviderAccountIds } },
-    });
-  }
+  await prisma.bankAccount.deleteMany({
+    where: {
+      userId,
+      bankConnectionId: connectionId,
+      ...(activeProviderAccountIds.length ? { providerAccountId: { notIn: activeProviderAccountIds } } : {}),
+    },
+  });
 
   for (const transaction of sync.transactions) {
     const bankAccountId = accountIdByProviderId.get(transaction.providerAccountId);
@@ -176,6 +180,96 @@ async function writeBankSyncData(userId: string, connectionId: string, sync: Ban
       },
     });
   }
+}
+
+function scopedSimpleFinItemId(userId: string, providerItemId: string) {
+  return `${userId}:${providerItemId}`;
+}
+
+function unscopedSimpleFinItemId(userId: string, providerItemId: string | null) {
+  const prefix = `${userId}:`;
+  if (!providerItemId?.startsWith(prefix)) throw new Error("SimpleFIN connection identifier is invalid");
+  return providerItemId.slice(prefix.length);
+}
+
+async function writeSimpleFinSnapshot(
+  userId: string,
+  snapshot: SimpleFinConnectionSync[],
+  message: string,
+  reactivateDisconnected = false,
+) {
+  const activeProviderItemIds: string[] = [];
+  const savedConnections = [];
+  const disconnectedIds = reactivateDisconnected
+    ? new Set<string>()
+    : new Set((await prisma.bankConnection.findMany({
+      where: { userId, provider: "simplefin", status: "disconnected" },
+      select: { providerItemId: true },
+    })).map((connection) => connection.providerItemId).filter((id): id is string => Boolean(id)));
+  for (const item of snapshot) {
+    const providerItemId = scopedSimpleFinItemId(userId, item.providerItemId);
+    if (disconnectedIds.has(providerItemId)) continue;
+    activeProviderItemIds.push(providerItemId);
+    const existing = await prisma.bankConnection.findUnique({
+      where: { provider_providerItemId: { provider: "simplefin", providerItemId } },
+      select: { userId: true },
+    });
+    assertBankConnectionOwnership(existing?.userId, userId);
+    const warning = item.sync.warnings.join("; ") || null;
+    const connection = await prisma.bankConnection.upsert({
+      where: { provider_providerItemId: { provider: "simplefin", providerItemId } },
+      update: {
+        institutionId: item.institutionId,
+        institutionName: item.institutionName,
+        productsEnabled: item.sync.productsEnabled as Prisma.InputJsonValue,
+        syncWarning: warning,
+        status: warning ? "warning" : "active",
+        lastSyncedAt: new Date(),
+      },
+      create: {
+        userId,
+        provider: "simplefin",
+        providerItemId,
+        institutionId: item.institutionId,
+        institutionName: item.institutionName,
+        productsEnabled: item.sync.productsEnabled as Prisma.InputJsonValue,
+        syncWarning: warning,
+        status: warning ? "warning" : "active",
+        lastSyncedAt: new Date(),
+      },
+    });
+    await writeBankSyncData(userId, connection.id, item.sync);
+    await prisma.bankSyncLog.create({
+      data: {
+        userId,
+        bankConnectionId: connection.id,
+        provider: "simplefin",
+        status: warning ? "partial" : "success",
+        message: warning || message,
+        finishedAt: new Date(),
+      },
+    });
+    savedConnections.push(safeBankConnection(connection));
+  }
+
+  await prisma.bankConnection.updateMany({
+    where: {
+      userId,
+      provider: "simplefin",
+      status: { not: "disconnected" },
+      ...(activeProviderItemIds.length ? { providerItemId: { notIn: activeProviderItemIds } } : {}),
+    },
+    data: { status: "disconnected" },
+  });
+  return savedConnections;
+}
+
+export async function connectSimpleFin(userId: string, setupToken: string) {
+  const accessUrl = await claimSimpleFinSetupToken(setupToken);
+  await saveProviderCredential(userId, "simplefin", accessUrl);
+  const snapshot = await fetchSimpleFinSnapshot(accessUrl);
+  if (!snapshot.length) throw new Error("SimpleFIN did not return any bank connections");
+  return writeSimpleFinSnapshot(userId, snapshot, "Initial SimpleFIN sync completed", true);
 }
 
 export async function exchangeBankPublicToken(userId: string, publicToken: string) {
@@ -233,14 +327,27 @@ export async function syncBankConnection(userId: string, connectionId: string) {
   const connection = await prisma.bankConnection.findFirst({ where: bankOwnershipWhere(userId, connectionId) });
   if (!connection) throw new Error("Bank connection not found");
   if (connection.status === "disconnected") throw new Error("Bank connection is disconnected");
-  if (!connection.providerAccessTokenEncrypted) throw new Error("Bank connection is missing its provider token");
+  if (connection.provider === "plaid" && !connection.providerAccessTokenEncrypted) {
+    throw new Error("Bank connection is missing its provider token");
+  }
 
   const startedAt = new Date();
   try {
-    const sync = await syncPlaidBankAccessToken(
-      decryptSecret(connection.providerAccessTokenEncrypted),
-      connection.transactionsCursor,
-    );
+    let sync: BankSyncResult;
+    if (connection.provider === "simplefin") {
+      const accessUrl = await getProviderCredential(userId, "simplefin");
+      if (!accessUrl) throw new Error("SimpleFIN access is missing. Connect again with a new setup token.");
+      const snapshot = await fetchSimpleFinSnapshot(accessUrl, connection.lastSyncedAt);
+      const providerItemId = unscopedSimpleFinItemId(userId, connection.providerItemId);
+      const item = snapshot.find((candidate) => candidate.providerItemId === providerItemId);
+      if (!item) throw new Error("This SimpleFIN bank connection is no longer available");
+      sync = item.sync;
+    } else {
+      sync = await syncPlaidBankAccessToken(
+        decryptSecret(connection.providerAccessTokenEncrypted as string),
+        connection.transactionsCursor,
+      );
+    }
     await writeBankSyncData(userId, connection.id, sync);
     const warning = sync.warnings.join("; ") || null;
     const updated = await prisma.bankConnection.update({
@@ -270,7 +377,10 @@ export async function syncBankConnection(userId: string, connectionId: string) {
     return safeBankConnection(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bank sync failed";
-    await prisma.bankConnection.update({ where: { id: connection.id }, data: { status: "error", syncWarning: message } });
+    await prisma.bankConnection.update({
+      where: { id: connection.id },
+      data: { status: /revoked|connect again|access is missing/i.test(message) ? "requires_reauth" : "error", syncWarning: message },
+    });
     await prisma.bankSyncLog.create({
       data: {
         userId,
@@ -292,7 +402,26 @@ export async function syncAllBankConnections(userId: string) {
     orderBy: { createdAt: "asc" },
   });
   const results = [];
-  for (const connection of connections) {
+  const simpleFinConnections = connections.filter((connection) => connection.provider === "simplefin");
+  if (simpleFinConnections.length) {
+    try {
+      const accessUrl = await getProviderCredential(userId, "simplefin");
+      if (!accessUrl) throw new Error("SimpleFIN access is missing. Connect again with a new setup token.");
+      const oldestSync = simpleFinConnections.some((connection) => !connection.lastSyncedAt)
+        ? null
+        : simpleFinConnections.reduce<Date | null>((oldest, connection) =>
+          !oldest || (connection.lastSyncedAt && connection.lastSyncedAt < oldest) ? connection.lastSyncedAt : oldest, null);
+      const snapshot = await fetchSimpleFinSnapshot(accessUrl, oldestSync);
+      results.push(...await writeSimpleFinSnapshot(userId, snapshot, "SimpleFIN bank sync completed"));
+    } catch (error) {
+      results.push(...simpleFinConnections.map((connection) => ({
+        id: connection.id,
+        status: "error",
+        error: error instanceof Error ? error.message : "Sync failed",
+      })));
+    }
+  }
+  for (const connection of connections.filter((item) => item.provider !== "simplefin")) {
     try {
       results.push(await syncBankConnection(userId, connection.id));
     } catch (error) {
@@ -313,6 +442,12 @@ export async function disconnectBankConnection(userId: string, connectionId: str
     where: { id: connectionId },
     data: { providerAccessTokenEncrypted: null, transactionsCursor: null, status: "disconnected" },
   });
+  if (connection.provider === "simplefin") {
+    const remaining = await prisma.bankConnection.count({
+      where: { userId, provider: "simplefin", status: { not: "disconnected" } },
+    });
+    if (!remaining) await deleteProviderCredential(userId, "simplefin");
+  }
   return safeBankConnection(updated);
 }
 

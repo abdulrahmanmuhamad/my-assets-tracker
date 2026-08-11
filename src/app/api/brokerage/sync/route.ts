@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/auth";
 import { syncBrokerageSchema } from "@/lib/validators";
 import { syncAllBrokerageConnections, syncBrokerageConnection } from "@/services/brokerage/syncService";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();

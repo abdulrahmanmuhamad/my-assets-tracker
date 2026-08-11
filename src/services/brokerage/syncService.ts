@@ -1,10 +1,20 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret, encryptSecret } from "@/lib/encryption";
+import { deleteProviderCredential, getProviderCredential, saveProviderCredential } from "@/lib/provider-credentials";
 import { calculateStocksPortfolioSummary, toNumber } from "@/lib/calculations";
 import { plaidProvider } from "./plaidProvider";
 import type { BrokerageProvider, BrokerageSyncResult, NormalizedStockHolding } from "./types";
 import { assertBrokerageConnectionOwnership, brokerageOwnershipWhere, safeBrokerageConnection } from "./security";
+import {
+  createSnapTradePortal,
+  deleteSnapTradeAuthorization,
+  listSnapTradeAuthorizations,
+  parseSnapTradeCredential,
+  ProviderReauthenticationError,
+  serializeSnapTradeCredential,
+  syncSnapTradeAuthorization,
+} from "./snaptradePersonalProvider";
 
 const providers: Record<string, BrokerageProvider> = {
   plaid: plaidProvider,
@@ -106,8 +116,10 @@ function serializeTransaction(transaction: {
 
 async function writeSyncData(userId: string, connectionId: string, sync: BrokerageSyncResult) {
   const accountIdByProviderId = new Map<string, string>();
+  const activeProviderAccountIds: string[] = [];
 
   for (const account of sync.accounts) {
+    activeProviderAccountIds.push(account.providerAccountId);
     const saved = await prisma.brokerageAccount.upsert({
       where: {
         brokerageConnectionId_providerAccountId: {
@@ -143,6 +155,14 @@ async function writeSyncData(userId: string, connectionId: string, sync: Brokera
     });
     accountIdByProviderId.set(account.providerAccountId, saved.id);
   }
+
+  await prisma.brokerageAccount.deleteMany({
+    where: {
+      userId,
+      brokerageConnectionId: connectionId,
+      ...(activeProviderAccountIds.length ? { providerAccountId: { notIn: activeProviderAccountIds } } : {}),
+    },
+  });
 
   const activeHoldingIds: string[] = [];
   for (const holding of sync.holdings) {
@@ -300,16 +320,113 @@ export async function exchangePlaidPublicToken(userId: string, publicToken: stri
   return safeBrokerageConnection(connection);
 }
 
+function scopedProviderItemId(userId: string, providerItemId: string) {
+  return `${userId}:${providerItemId}`;
+}
+
+function unscopedProviderItemId(userId: string, providerItemId: string | null) {
+  const prefix = `${userId}:`;
+  if (!providerItemId?.startsWith(prefix)) throw new Error("Provider connection identifier is invalid");
+  return providerItemId.slice(prefix.length);
+}
+
+export async function createSnapTradeConnectionPortal(
+  userId: string,
+  suppliedCredential: { clientId: string; consumerKey: string } | null,
+  redirectUrl: string,
+  connectionId?: string,
+) {
+  const storedCredential = suppliedCredential ? null : await getProviderCredential(userId, "snaptrade");
+  const credential = suppliedCredential || (storedCredential ? parseSnapTradeCredential(storedCredential) : null);
+  if (!credential) throw new Error("Enter your SnapTrade Personal Client ID and Consumer Key first");
+  let reconnect: string | undefined;
+  if (connectionId) {
+    const connection = await prisma.brokerageConnection.findFirst({ where: brokerageOwnershipWhere(userId, connectionId) });
+    if (!connection || connection.provider !== "snaptrade") throw new Error("SnapTrade connection not found");
+    reconnect = unscopedProviderItemId(userId, connection.providerItemId);
+  }
+  if (suppliedCredential) {
+    await saveProviderCredential(userId, "snaptrade", serializeSnapTradeCredential(credential));
+  }
+  return createSnapTradePortal(credential, redirectUrl, reconnect);
+}
+
+export async function finalizeSnapTradeConnections(userId: string) {
+  const encryptedCredential = await getProviderCredential(userId, "snaptrade");
+  if (!encryptedCredential) throw new Error("Connect SnapTrade Personal before synchronizing brokerage accounts");
+  const credential = parseSnapTradeCredential(encryptedCredential);
+  const authorizations = await listSnapTradeAuthorizations(credential);
+  if (!authorizations.length) throw new Error("SnapTrade did not return any brokerage connections");
+  const activeScopedIds: string[] = [];
+
+  for (const authorization of authorizations) {
+    const providerItemId = scopedProviderItemId(userId, authorization.id);
+    activeScopedIds.push(providerItemId);
+    const existing = await prisma.brokerageConnection.findUnique({
+      where: { provider_providerItemId: { provider: "snaptrade", providerItemId } },
+      select: { userId: true },
+    });
+    assertBrokerageConnectionOwnership(existing?.userId, userId);
+    await prisma.brokerageConnection.upsert({
+      where: { provider_providerItemId: { provider: "snaptrade", providerItemId } },
+      update: {
+        institutionId: authorization.id,
+        institutionName: authorization.institutionName,
+        institutionLogoUrl: authorization.institutionLogoUrl,
+        status: authorization.status,
+      },
+      create: {
+        userId,
+        provider: "snaptrade",
+        providerItemId,
+        institutionId: authorization.id,
+        institutionName: authorization.institutionName,
+        institutionLogoUrl: authorization.institutionLogoUrl,
+        status: authorization.status,
+      },
+    });
+  }
+
+  await prisma.brokerageConnection.updateMany({
+    where: { userId, provider: "snaptrade", providerItemId: { notIn: activeScopedIds }, status: { not: "disconnected" } },
+    data: { status: "disconnected" },
+  });
+  const connections = await prisma.brokerageConnection.findMany({
+    where: { userId, provider: "snaptrade", providerItemId: { in: activeScopedIds } },
+  });
+  const results = [];
+  for (const connection of connections) {
+    try {
+      results.push(await syncBrokerageConnection(userId, connection.id));
+    } catch (error) {
+      results.push({ id: connection.id, status: "error", error: error instanceof Error ? error.message : "Sync failed" });
+    }
+  }
+  return results;
+}
+
 export async function syncBrokerageConnection(userId: string, connectionId: string) {
   const connection = await prisma.brokerageConnection.findFirst({ where: brokerageOwnershipWhere(userId, connectionId) });
   if (!connection) throw new Error("Brokerage connection not found");
   if (connection.status === "disconnected") throw new Error("Brokerage connection is disconnected");
-  if (!connection.providerAccessTokenEncrypted) throw new Error("Brokerage connection is missing its provider token");
+  if (connection.provider === "plaid" && !connection.providerAccessTokenEncrypted) {
+    throw new Error("Brokerage connection is missing its provider token");
+  }
 
   const startedAt = new Date();
   try {
-    const token = decryptSecret(connection.providerAccessTokenEncrypted);
-    const sync = await providerFor(connection.provider).syncConnection(token);
+    let sync: BrokerageSyncResult;
+    if (connection.provider === "snaptrade") {
+      const stored = await getProviderCredential(userId, "snaptrade");
+      if (!stored) throw new Error("SnapTrade Personal credentials are missing");
+      sync = await syncSnapTradeAuthorization(
+        parseSnapTradeCredential(stored),
+        unscopedProviderItemId(userId, connection.providerItemId),
+      );
+    } else {
+      const token = decryptSecret(connection.providerAccessTokenEncrypted as string);
+      sync = await providerFor(connection.provider).syncConnection(token);
+    }
     await writeSyncData(userId, connection.id, sync);
     const updated = await prisma.brokerageConnection.update({
       where: { id: connection.id },
@@ -336,7 +453,7 @@ export async function syncBrokerageConnection(userId: string, connectionId: stri
   } catch (error) {
     await prisma.brokerageConnection.update({
       where: { id: connection.id },
-      data: { status: "error" },
+      data: { status: error instanceof ProviderReauthenticationError ? "requires_reauth" : "error" },
     });
     await prisma.brokerageSyncLog.create({
       data: {
@@ -380,6 +497,21 @@ export async function disconnectBrokerageConnection(userId: string, connectionId
   const connection = await prisma.brokerageConnection.findFirst({ where: brokerageOwnershipWhere(userId, connectionId) });
   if (!connection) throw new Error("Brokerage connection not found");
 
+  if (connection.provider === "snaptrade") {
+    const stored = await getProviderCredential(userId, "snaptrade");
+    if (stored) {
+      try {
+        await deleteSnapTradeAuthorization(
+          parseSnapTradeCredential(stored),
+          unscopedProviderItemId(userId, connection.providerItemId),
+        );
+      } catch (error) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status !== 404) throw error;
+      }
+    }
+  }
+
   if (deleteData) {
     await prisma.stockTransaction.deleteMany({ where: { userId, brokerageConnectionId: connectionId } });
     await prisma.stockHolding.deleteMany({ where: { userId, brokerageConnectionId: connectionId } });
@@ -393,6 +525,13 @@ export async function disconnectBrokerageConnection(userId: string, connectionId
       status: "disconnected",
     },
   });
+
+  if (connection.provider === "snaptrade") {
+    const remaining = await prisma.brokerageConnection.count({
+      where: { userId, provider: "snaptrade", status: { not: "disconnected" } },
+    });
+    if (!remaining) await deleteProviderCredential(userId, "snaptrade");
+  }
 
   return safeBrokerageConnection(updated);
 }

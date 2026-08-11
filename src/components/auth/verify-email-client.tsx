@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSignIn, useSignUp } from "@clerk/nextjs";
 import { CircleAlert, LoaderCircle } from "lucide-react";
 
 export function VerifyEmailClient() {
+  const router = useRouter();
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();
   const [error, setError] = useState("");
@@ -28,12 +30,12 @@ export function VerifyEmailClient() {
     const resource = signInVerification ? signIn : signUp;
     resource?.finalize().then(({ error: finalizeError }) => {
       if (finalizeError) throw finalizeError;
-      window.location.assign("/pending-approval");
+      router.replace("/pending-approval");
     }).catch((finalizeError) => {
       completing.current = false;
       setError(finalizeError instanceof Error ? finalizeError.message : "Email verification could not be completed.");
     });
-  }, [signIn, signUp]);
+  }, [router, signIn, signUp]);
 
   const displayedError = error || verificationError;
   return displayedError ? (

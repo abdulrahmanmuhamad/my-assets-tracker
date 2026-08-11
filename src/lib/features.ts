@@ -15,13 +15,11 @@ export function isPlaidFeatureEnabled() {
 }
 
 export function isStocksFeatureEnabled() {
-  const publicFlag = process.env.NEXT_PUBLIC_ENABLE_STOCKS_FEATURE === "true";
-  return typeof window === "undefined" ? publicFlag && isPlaidFeatureEnabled() : publicFlag;
+  return true;
 }
 
 export function isBanksFeatureEnabled() {
-  const publicFlag = process.env.NEXT_PUBLIC_ENABLE_BANKS_FEATURE === "true";
-  return typeof window === "undefined" ? publicFlag && isPlaidFeatureEnabled() : publicFlag;
+  return true;
 }
 
 export function requirePlaidFeatureEnabled() {

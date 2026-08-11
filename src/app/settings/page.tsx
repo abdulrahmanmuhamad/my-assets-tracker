@@ -33,7 +33,7 @@ export default async function SettingsPage() {
         clerk: Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY),
         ownerEmails: Boolean(process.env.OWNER_EMAILS?.trim()),
         clerkWebhook: Boolean(process.env.CLERK_WEBHOOK_SECRET),
-        plaid: Boolean(process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET),
+        providerConnections: true,
         tokenEncryption: Boolean(process.env.TOKEN_ENCRYPTION_KEY),
         resend: Boolean(process.env.RESEND_API_KEY && process.env.ALERT_FROM_EMAIL),
         alerts: Boolean(process.env.ALERTS_EVALUATION_SECRET || process.env.CRON_SECRET),

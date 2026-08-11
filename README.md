@@ -8,8 +8,8 @@ Private Next.js portfolio dashboard for minerals, real estate, jewelry, brokerag
 - Minerals with gold karat, non-gold purity, live pricing, search, filters, and files
 - Jewelry with karat/purity valuation, gemstones, ROI, search, filters, and files
 - Real estate with financing, equity, rent, expenses, cash flow, and reminders
-- Plaid Investments accounts, holdings, transactions, cost basis, and sync
-- Plaid bank connections for depository balances, credit-card debt, and bank transactions
+- SnapTrade Personal brokerage accounts, holdings, transactions, cost basis, and sync
+- SimpleFIN Bridge bank connections for balances, credit-card debt, and transactions
 - S&P 500, Dow Jones, Nasdaq Composite, Nasdaq 100, and Russell 2000 tracking
 - In-app and email alerts with cooldown, recurrence, history, and read state
 - CSV import plus CSV/PDF/JSON export
@@ -135,26 +135,27 @@ ALLOW_DEV_AUTH_BYPASS=false
 
 The application also rejects the bypass whenever `NODE_ENV=production`, even if the variable is accidentally set to `true`. Missing production Clerk keys return a clear `503` response.
 
-## Plaid Sandbox Setup
+## Automatic Bank And Brokerage Sync
 
-1. Create a Plaid application at `https://dashboard.plaid.com`.
-2. Enable the Investments product.
-3. Copy the Plaid client ID and **Sandbox** secret.
-4. Add `http://localhost:3001/stocks` as a redirect URI when required.
-5. Set:
+No SimpleFIN or SnapTrade credentials belong in `.env`. Each approved user configures their own read-only provider from the Banks or Stocks page.
 
-```env
-PLAID_CLIENT_ID="..."
-PLAID_SECRET="your-sandbox-secret"
-PLAID_ENV="sandbox"
-PLAID_PRODUCTS="investments,auth,transactions,liabilities"
-PLAID_COUNTRY_CODES="US"
-PLAID_REDIRECT_URI="http://localhost:3001/stocks"
-```
+### SimpleFIN Bridge Banks
 
-Use the Stocks page to connect a Sandbox institution. The app never stores brokerage usernames or passwords. It receives a provider access token, encrypts it, and stores only the encrypted value.
+1. Open Banks and choose **Connect Bank**.
+2. Follow **Create setup token** to SimpleFIN Bridge.
+3. Subscribe for $15/year or $1.50/month, connect the bank on SimpleFIN, and create a one-time setup token.
+4. Paste that token into the app once. The app exchanges it server-side, encrypts the returned read-only access URL with `TOKEN_ENCRYPTION_KEY`, and immediately discards the setup token.
+5. Use **Sync All** for balances and transactions. SimpleFIN updates source data about daily and limits clients to 24 requests per day, so the app batches all connected SimpleFIN banks into one refresh.
 
-Plaid products must also be enabled for the application in the Plaid dashboard. `transactions` can initially return `PRODUCT_NOT_READY`, and liability data is not available from every institution. These conditions are recorded as partial-sync warnings while account balances remain usable.
+### SnapTrade Personal Stocks
+
+1. Create a free SnapTrade Personal account at `https://snaptrade.com/snaptrade-personal`.
+2. Open the SnapTrade dashboard and copy the Personal Client ID and Personal Consumer Key.
+3. In this app, open Stocks, choose **Connect Brokerage**, enter those two values, and continue to SnapTrade.
+4. Sign in to the brokerage only inside SnapTrade's portal. The app requests a read-only connection and never receives the brokerage username or password.
+5. After SnapTrade redirects back to `/stocks`, the app imports accounts, balances, unified positions, and available activities.
+
+Both provider credentials are encrypted per authenticated user and never returned by an API. Plaid remains disabled as a legacy integration unless `ENABLE_PLAID_FEATURES=true` is deliberately configured.
 
 ## Banks, Cash, and Liabilities
 
@@ -166,7 +167,7 @@ Open `/banks` to connect checking, savings, money-market, cash-management, CD, c
 - Settings > Privacy & Display can optionally include liquid cash in the dashboard portfolio total. The default is off.
 - Cash is included at face value and does not add artificial gain or loss.
 
-Plaid access tokens use the existing AES-256-GCM encryption key. Bank usernames and passwords are never received or stored by this application.
+SimpleFIN access URLs use the existing AES-256-GCM encryption key. Bank usernames and passwords are never received or stored by this application.
 
 ## Privacy, Theme, and Responsive Layout
 
@@ -190,7 +191,7 @@ Set:
 TOKEN_ENCRYPTION_KEY="generated-value"
 ```
 
-Tokens use AES-256-GCM. Back up this key securely. Changing it without re-encrypting existing tokens forces brokerage reconnection.
+Provider credentials use AES-256-GCM. Back up this key securely. Changing it without re-encrypting existing values forces bank and brokerage reconnection.
 
 Generate a separate alert-evaluation secret with the same command:
 
@@ -346,6 +347,16 @@ Market indexes:
 
 All portfolio endpoints require an authenticated, verified, approved local user. Unverified, pending, rejected, and suspended users receive stable `403` denial codes. Evaluation requires the dedicated server secret.
 
+Provider endpoints:
+
+- `POST /api/banks/simplefin/connect` claims a one-time setup token server-side
+- `POST /api/banks/sync` and `POST /api/banks/sync/:id`
+- `POST /api/brokerage/snaptrade/connect` returns only a short-lived portal URL
+- `POST /api/brokerage/snaptrade/finalize` imports the authenticated user's connections
+- `POST /api/brokerage/sync` and `POST /api/brokerage/sync/:id`
+
+Connection and sync routes scope every database operation by the authenticated user ID. Provider credentials and access URLs are never serialized to the frontend.
+
 ## Testing
 
 ```powershell
@@ -358,35 +369,25 @@ npm run alerts:evaluate
 
 ## Deployment Checklist
 
-1. Install Docker or select a managed deployment platform.
-2. Copy `.env.production.example` to `.env.production`.
-3. Replace every placeholder.
+1. Open the Vercel project and confirm the Production environment variables are complete.
+2. Keep `ENABLE_PLAID_FEATURES=false`; SimpleFIN and SnapTrade do not need deployment API keys.
+3. Confirm the connected Neon `DATABASE_URL` is available during Vercel builds.
 4. Use a URL-encoded PostgreSQL password in `DATABASE_URL`.
 5. Set a real `NEXT_PUBLIC_APP_URL`.
 6. Configure Clerk Production keys and DNS.
-7. Configure Plaid Production credentials and redirect URI.
-8. Set permanent `TOKEN_ENCRYPTION_KEY` and `ALERTS_EVALUATION_SECRET` values.
-9. Configure and verify Resend sender domain if email is enabled.
-10. Copy `Caddyfile.example` to `Caddyfile` and replace the domain.
-11. Build, migrate, start the app, and start the cron profile.
-
-```powershell
-docker compose --env-file .env.production -f docker-compose.prod.yml build
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d db
-docker compose --env-file .env.production -f docker-compose.prod.yml --profile tools run --rm migrate
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d app caddy
-docker compose --env-file .env.production -f docker-compose.prod.yml --profile cron up -d alerts-cron
-```
+7. Set permanent `TOKEN_ENCRYPTION_KEY` and `ALERTS_EVALUATION_SECRET` values.
+8. Configure and verify Resend sender domain if email is enabled.
+9. Deploy. Vercel runs `npm run vercel-build`, which applies checked-in Prisma migrations before the Next.js build.
+10. Sign in as an approved user and configure SimpleFIN and SnapTrade from Banks and Stocks.
 
 Rebuild after changing any `NEXT_PUBLIC_*` value because Next.js embeds those values in client bundles.
-
-For serverless deployment, replace local uploads with S3, Supabase Storage, or Vercel Blob.
+Production uploads use the configured private Vercel Blob store; do not use local `UPLOAD_DIR` storage on Vercel.
 
 ## Security Checklist
 
 - `ALLOW_DEV_AUTH_BYPASS=false` in production
 - Real Clerk `pk_live_` and `sk_live_` keys configured
-- Plaid access tokens encrypted; brokerage credentials never stored
+- SimpleFIN and SnapTrade provider credentials encrypted per user; bank/brokerage passwords never stored
 - Permanent 32-byte token encryption key stored in a secret manager
 - Long random evaluation secret stored server-side only
 - PostgreSQL password URL-encoded in `DATABASE_URL`
@@ -396,15 +397,15 @@ For serverless deployment, replace local uploads with S3, Supabase Storage, or V
 - Last owner cannot be demoted, rejected, or suspended
 - Clerk webhook signatures verified with `CLERK_WEBHOOK_SECRET`
 - Alert evaluation endpoint excluded from Clerk only because bearer-secret authentication is mandatory
-- Resend, Plaid, Clerk, database, and encryption secrets never use `NEXT_PUBLIC_`
-- HTTPS enabled through Caddy or the hosting platform
+- Resend, Clerk, database, provider, and encryption secrets never use `NEXT_PUBLIC_`
+- HTTPS enabled through the hosting platform
 - Database backups and encryption-key backups configured
 - Upload storage private and not served as a public directory
 - Tests and production build pass before deployment
 
 ## Database Models
 
-Portfolio models include users, minerals, real estate, jewelry, files, settings, metal prices, brokerage connections/accounts, holdings, transactions, and sync logs.
+Portfolio models include users, minerals, real estate, jewelry, files, settings, metal prices, encrypted provider credentials, bank/brokerage connections and accounts, holdings, transactions, and sync logs.
 
 Alert models:
 

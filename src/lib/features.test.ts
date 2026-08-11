@@ -27,31 +27,31 @@ afterEach(() => {
   }
 });
 
-describe("Plaid feature gates", () => {
-  it("defaults to disabled and requires both server and public flags", () => {
+describe("provider feature gates", () => {
+  it("keeps SimpleFIN banks and SnapTrade stocks available while Plaid remains opt-in", () => {
     delete process.env.ENABLE_PLAID_FEATURES;
     delete process.env.NEXT_PUBLIC_ENABLE_STOCKS_FEATURE;
     delete process.env.NEXT_PUBLIC_ENABLE_BANKS_FEATURE;
     expect(isPlaidFeatureEnabled()).toBe(false);
-    expect(isStocksFeatureEnabled()).toBe(false);
-    expect(isBanksFeatureEnabled()).toBe(false);
+    expect(isStocksFeatureEnabled()).toBe(true);
+    expect(isBanksFeatureEnabled()).toBe(true);
 
     process.env.ENABLE_PLAID_FEATURES = "true";
     process.env.NEXT_PUBLIC_ENABLE_STOCKS_FEATURE = "true";
     expect(isStocksFeatureEnabled()).toBe(true);
-    expect(isBanksFeatureEnabled()).toBe(false);
+    expect(isBanksFeatureEnabled()).toBe(true);
   });
 
-  it("blocks every stock, brokerage, and bank API while preserving market indexes", () => {
+  it("does not block the replacement provider APIs when Plaid is disabled", () => {
     process.env.ENABLE_PLAID_FEATURES = "false";
     process.env.NEXT_PUBLIC_ENABLE_STOCKS_FEATURE = "false";
     process.env.NEXT_PUBLIC_ENABLE_BANKS_FEATURE = "false";
-    expect(disabledFeatureForApiPath("/api/stocks")).toBe("stocks");
-    expect(disabledFeatureForApiPath("/api/brokerage/sync/abc")).toBe("stocks");
-    expect(disabledFeatureForApiPath("/api/banks/plaid/create-link-token")).toBe("banks");
+    expect(disabledFeatureForApiPath("/api/stocks")).toBeNull();
+    expect(disabledFeatureForApiPath("/api/brokerage/sync/abc")).toBeNull();
+    expect(disabledFeatureForApiPath("/api/banks/simplefin/connect")).toBeNull();
     expect(disabledFeatureForApiPath("/api/market-indexes/^GSPC")).toBeNull();
-    expect(() => requireStocksFeatureEnabled()).toThrow(FeatureDisabledError);
-    expect(() => requireBanksFeatureEnabled()).toThrow(FeatureDisabledError);
+    expect(() => requireStocksFeatureEnabled()).not.toThrow();
+    expect(() => requireBanksFeatureEnabled()).not.toThrow();
   });
 
   it("returns the required stable disabled-feature response", async () => {

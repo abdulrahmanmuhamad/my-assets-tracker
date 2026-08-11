@@ -14,8 +14,7 @@ function loadLocalEnvironment() {
 
 async function main() {
   loadLocalEnvironment();
-  const [{ inspectPlaidConfiguration, inspectPlaidBankingConfiguration }, { isValidTokenEncryptionKey }, { selectEmailProvider }] = await Promise.all([
-    import("../src/services/brokerage/config"),
+  const [{ isValidTokenEncryptionKey }, { selectEmailProvider }] = await Promise.all([
     import("../src/lib/encryption-key"),
     import("../src/lib/notifications/email-provider"),
   ]);
@@ -23,8 +22,6 @@ async function main() {
   const publishable = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
   const secret = process.env.CLERK_SECRET_KEY || "";
   const clerkDevelopment = publishable.startsWith("pk_test_") && secret.startsWith("sk_test_");
-  const plaid = inspectPlaidConfiguration(process.env);
-  const plaidBanking = inspectPlaidBankingConfiguration(process.env);
   const plaidEnabled = process.env.ENABLE_PLAID_FEATURES === "true";
 
   console.log("Local integration readiness");
@@ -33,9 +30,9 @@ async function main() {
   console.log(`- Clerk webhook: ${process.env.CLERK_WEBHOOK_SECRET ? "ready" : "optional / missing"}`);
   console.log(`- Owner bootstrap: ${process.env.OWNER_EMAILS?.trim() ? "ready" : "missing"}`);
   console.log(`- Dev auth bypass: ${process.env.ALLOW_DEV_AUTH_BYPASS === "true" ? "enabled" : "disabled"}`);
-  console.log(`- Plaid features: ${plaidEnabled ? "enabled" : "disabled (optional for this deployment)"}`);
-  console.log(`- Plaid ${plaid.environment}: ${!plaidEnabled ? "not required" : plaid.configured ? "ready" : `blocked (${plaid.issues.join("; ")})`}`);
-  console.log(`- Plaid banking products: ${!plaidEnabled ? "not required" : plaidBanking.configured ? "ready" : `blocked (${plaidBanking.issues.join("; ")})`}`);
+  console.log("- SimpleFIN Bridge: available (each user supplies a setup token in Banks)");
+  console.log("- SnapTrade Personal: available (each user supplies Personal API credentials in Stocks)");
+  console.log(`- Legacy Plaid routes: ${plaidEnabled ? "enabled intentionally" : "disabled"}`);
   console.log(`- Token encryption key: ${isValidTokenEncryptionKey(process.env.TOKEN_ENCRYPTION_KEY) ? "ready" : "missing or invalid"}`);
   console.log(`- Alert evaluation secret: ${process.env.ALERTS_EVALUATION_SECRET ? "ready" : "missing"}`);
   console.log(

@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePlaidLink } from "react-plaid-link";
-import { AlertTriangle, BellPlus, BellRing, Building2, Link2, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, BellPlus, BellRing, Building2, ExternalLink, KeyRound, Link2, RefreshCcw, ShieldCheck, Trash2 } from "lucide-react";
 import { AlertRuleForm } from "@/components/alerts/alert-rule-form";
 import type { AlertRuleRecord, AlertTarget } from "@/lib/alerts/client-types";
 import { AllocationLegend, AllocationPie } from "@/components/charts/allocation-pie";
@@ -10,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, MetricCard } from "@/components/ui/card";
 import { EmptyState, PageHeader, RoiBadge } from "@/components/ui/patterns";
+import { Modal } from "@/components/ui/modal";
 import { cn, formatCurrency, formatDisplayDate, formatPercent } from "@/lib/utils";
 import { SensitiveCurrency, SensitiveNumber } from "@/components/privacy/sensitive-value";
 
@@ -125,11 +125,14 @@ function StockRoiBadge({ value }: { value: number | null | undefined }) {
 export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: StocksPortfolio }) {
   const [portfolio, setPortfolio] = useState(initialPortfolio);
   const [activeConnectionId, setActiveConnectionId] = useState(initialPortfolio.connections[0]?.id || "all");
-  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [consumerKey, setConsumerKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertTarget, setAlertTarget] = useState<AlertTarget | null>(null);
   const [alertRules, setAlertRules] = useState<AlertRuleRecord[]>([]);
+  const finalizedRedirect = useRef(false);
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/stocks", { cache: "no-store" });
@@ -139,37 +142,31 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
     setActiveConnectionId((current) => next.connections.some((connection: StockConnection) => connection.id === current) ? current : next.connections[0]?.id || "all");
   }, []);
 
-  const onSuccess = useCallback(
-    async (publicToken: string) => {
-      setPending(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/brokerage/plaid/exchange-public-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ publicToken }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "Could not connect brokerage account");
-        await refresh();
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not connect brokerage account");
-      } finally {
-        setPending(false);
-        setLinkToken(null);
-      }
-    },
-    [refresh],
-  );
-
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess,
-  });
-
   useEffect(() => {
-    if (linkToken && ready) open();
-  }, [linkToken, open, ready]);
+    if (finalizedRedirect.current) return;
+    const params = new URL(window.location.href).searchParams;
+    const status = params.get("status");
+    if (!status) return;
+    finalizedRedirect.current = true;
+    window.history.replaceState({}, "", "/stocks");
+    if (status !== "SUCCESS") {
+      if (status === "ERROR") {
+        queueMicrotask(() => setError("SnapTrade could not complete the brokerage connection. Please try again."));
+      }
+      return;
+    }
+    queueMicrotask(() => {
+      setPending(true);
+      fetch("/api/brokerage/snaptrade/finalize", { method: "POST" })
+        .then(async (response) => {
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "Could not synchronize SnapTrade accounts");
+          await refresh();
+        })
+        .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not synchronize SnapTrade accounts"))
+        .finally(() => setPending(false));
+    });
+  }, [refresh]);
 
   useEffect(() => {
     fetch("/api/alerts?assetCategory=stock", { cache: "no-store" })
@@ -189,22 +186,41 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
     });
   }
 
-  async function connectBrokerage() {
+  async function startSnapTradePortal(body: { clientId?: string; consumerKey?: string; connectionId?: string }) {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/brokerage/plaid/create-link-token", {
+      const response = await fetch("/api/brokerage/snaptrade/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "plaid" }),
+        body: JSON.stringify(body),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not start brokerage linking");
-      setLinkToken(payload.linkToken);
+      window.location.assign(payload.redirectUri);
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not start brokerage linking");
-    } finally {
       setPending(false);
+      return false;
+    }
+  }
+
+  function connectBrokerage(connectionId?: string) {
+    if (connectionId || portfolio.connections.some((connection) => connection.provider === "snaptrade" && connection.status !== "disconnected")) {
+      void startSnapTradePortal(connectionId ? { connectionId } : {});
+      return;
+    }
+    setError(null);
+    setConnectOpen(true);
+  }
+
+  async function submitSnapTrade(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const started = await startSnapTradePortal({ clientId, consumerKey });
+    if (started) {
+      setClientId("");
+      setConsumerKey("");
     }
   }
 
@@ -225,14 +241,14 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
   }
 
   async function disconnect(connectionId: string) {
-    if (!window.confirm("Disconnect this brokerage? The provider token will be removed. Historical holdings can be deleted separately by using the full-delete API option.")) return;
+    if (!window.confirm("Disconnect this brokerage and remove its imported accounts, holdings, and transactions from this portfolio?")) return;
     setPending(true);
     setError(null);
     try {
       const response = await fetch(`/api/brokerage/connections/${connectionId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deleteData: false }),
+        body: JSON.stringify({ deleteData: true }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not disconnect brokerage");
@@ -275,7 +291,7 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
             <Button variant="secondary" onClick={() => sync()} disabled={pending || !activeConnections.length} icon={<RefreshCcw className={cn("h-4 w-4", pending && "animate-spin")} />}>
               Sync All
             </Button>
-            <Button onClick={connectBrokerage} disabled={pending} icon={<Link2 className="h-4 w-4" />}>
+            <Button onClick={() => connectBrokerage()} disabled={pending} icon={<Link2 className="h-4 w-4" />}>
               Connect Brokerage
             </Button>
           </>
@@ -296,7 +312,7 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
               title="Connect your first brokerage account"
               description="Securely connect your brokerage to automatically track holdings, balances, and investment performance. Brokerage credentials are never stored by this app."
               actionLabel="Connect Brokerage"
-              onAction={connectBrokerage}
+              onAction={() => connectBrokerage()}
             />
           </CardContent>
         </Card>
@@ -366,6 +382,11 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
               <Button variant="secondary" onClick={() => sync(selectedConnection.id)} disabled={pending} icon={<RefreshCcw className="h-4 w-4" />}>
                 Sync Broker
               </Button>
+              {selectedConnection.provider === "snaptrade" && selectedConnection.status === "requires_reauth" ? (
+                <Button variant="secondary" onClick={() => connectBrokerage(selectedConnection.id)} disabled={pending} icon={<KeyRound className="h-4 w-4" />}>
+                  Reconnect
+                </Button>
+              ) : null}
               <Button variant="danger" onClick={() => disconnect(selectedConnection.id)} disabled={pending} icon={<Trash2 className="h-4 w-4" />}>
                 Disconnect
               </Button>
@@ -551,6 +572,37 @@ export function StocksWorkspace({ initialPortfolio }: { initialPortfolio: Stocks
         </div>
         {!scopedTransactions.length ? <div className="p-5"><EmptyState title="No transactions yet" description="Provider transactions will appear after a successful brokerage sync." /></div> : null}
       </Card>
+
+      <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+        Brokerage usernames and passwords are handled by SnapTrade, never by this app. Your Personal API key is encrypted at rest and never returned to the browser.
+      </div>
+
+      <Modal open={connectOpen} title="Connect SnapTrade Personal" onClose={() => !pending && setConnectOpen(false)} size="md">
+        <form className="space-y-5" onSubmit={submitSnapTrade}>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-950">SnapTrade Personal</div>
+            <div className="mt-1 text-sm leading-6 text-slate-600">Free personal brokerage connectivity. The connection is requested in read-only mode.</div>
+            <Button className="mt-4 w-full sm:w-auto" variant="secondary" onClick={() => window.open("https://dashboard.snaptrade.com", "_blank", "noopener,noreferrer")} icon={<ExternalLink className="h-4 w-4" />}>
+              Open SnapTrade dashboard
+            </Button>
+          </div>
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-800">Personal Client ID</span>
+            <input className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" value={clientId} onChange={(event) => setClientId(event.target.value)} autoComplete="off" required />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-800">Personal Consumer Key</span>
+            <input className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" type="password" value={consumerKey} onChange={(event) => setConsumerKey(event.target.value)} autoComplete="new-password" required />
+          </label>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button className="w-full sm:w-auto" variant="secondary" onClick={() => setConnectOpen(false)} disabled={pending}>Cancel</Button>
+            <Button className="w-full sm:w-auto" type="submit" disabled={pending || !clientId.trim() || !consumerKey.trim()} icon={<Link2 className="h-4 w-4" />}>
+              {pending ? "Opening SnapTrade..." : "Continue to SnapTrade"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <AlertRuleForm
         open={Boolean(alertTarget)}
